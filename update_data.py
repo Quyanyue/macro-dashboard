@@ -614,7 +614,7 @@ def ev_fed():
             if not mon:
                 continue
             link = re.search(r'href="(/newsevents/pressreleases/monetary\d{8}a\.htm)"', row)
-            out.append(dict(date='%d-%02d-%02d' % (year, mon, day), time='北京时间次日 2:00—3:00', region='海外', type='央行议息', org='美联储',
+            out.append(dict(date='%d-%02d-%02d' % (year, mon, day), time='次日 2:00 或 3:00', region='海外', type='央行议息', org='美联储',
                             title='美联储 FOMC 议息决议' + ('（含经济预测与点阵图）' if d.group(2) else ''),
                             url='https://www.federalreserve.gov' + link.group(1) if link else EV_LINKS['fed'][0],
                             url_name='美联储声明' if link else EV_LINKS['fed'][1]))
@@ -716,7 +716,7 @@ def ev_bls():
         for ref, d, tm in re.findall(r'<tr[^>]*>\s*<td>([A-Za-z]+ \d{4})</td>\s*<td>([A-Za-z]{3,4}\.? \d{1,2}, \d{4})</td>\s*<td>([^<]+)</td>', t):
             mm = re.match(r'([A-Za-z]+)\.? (\d{1,2}), (\d{4})', d)
             rm = re.match(r'([A-Za-z]+) (\d{4})', ref)
-            out.append(dict(date='%s-%02d-%02d' % (mm.group(3), _mon(mm.group(1)), int(mm.group(2))), time='20:30 / 21:30（北京时间）',
+            out.append(dict(date='%s-%02d-%02d' % (mm.group(3), _mon(mm.group(1)), int(mm.group(2))), time='20:30 或 21:30',
                             region='海外', type='数据发布', org='美国劳工统计局', title=('美国%d月 %s' if label[0].isascii() else '美国%d月%s') % (_mon(rm.group(1)), label),
                             url=url, url_name=EV_LINKS['bls'][1], _key=sid, _period='%s-%02d' % (rm.group(2), _mon(rm.group(1)))))
     if out:
@@ -751,7 +751,7 @@ def ev_bea():
             pm = re.search(r', ([A-Za-z]+) \d{4}', name)
             title = '美国%d月贸易数据' % _mon(pm.group(1)) if pm else None
         if title:
-            out.append(dict(date='%d-%02d-%02d' % (year, _mon(m.group(1)), int(m.group(2))), time='20:30 / 21:30（北京时间）', region='海外',
+            out.append(dict(date='%d-%02d-%02d' % (year, _mon(m.group(1)), int(m.group(2))), time='20:30 或 21:30', region='海外',
                             type='数据发布', org='美国经济分析局', title=title, url=EV_LINKS['bea'][0], url_name=EV_LINKS['bea'][1],
                             _key='us_gdp' if g else None, _period=None))
     return out
@@ -765,7 +765,7 @@ def ev_census():
         if len(c) >= 4 and c[0].startswith('Advance Monthly Sales for Retail'):
             m = re.match(r'([A-Za-z]+) (\d{1,2}), (\d{4})', c[1]); p = re.match(r'([A-Za-z]+) (\d{4})', c[3])
             if m and p:
-                out.append(dict(date='%s-%02d-%02d' % (m.group(3), _mon(m.group(1)), int(m.group(2))), time='20:30 / 21:30（北京时间）',
+                out.append(dict(date='%s-%02d-%02d' % (m.group(3), _mon(m.group(1)), int(m.group(2))), time='20:30 或 21:30',
                                 region='海外', type='数据发布', org='美国人口普查局', title='美国%d月零售销售' % _mon(p.group(1)),
                                 url=EV_LINKS['census'][0], url_name=EV_LINKS['census'][1]))
     return out
