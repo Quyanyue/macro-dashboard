@@ -1,0 +1,74 @@
+# 宏观策略看板：定时抓取官方数据并发布到 GitHub Pages
+name: 更新数据并发布
+
+on:
+  schedule:
+    # 北京时间每天 10:30、17:30、22:00（统计局 9:30/10:00、央行通常下午发布）
+    - cron: '30 2 * * *'
+    - cron: '30 9 * * *'
+    - cron: '0 14 * * *'
+  workflow_dispatch:        # 也可以在 Actions 页面手动点「Run workflow」立即更新
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 已抓过的发布稿缓存起来，每次只抓新增的
+      - uses: actions/cache@v4
+        with:
+          path: cache
+          key: release-cache-${{ github.run_id }}
+          restore-keys: release-cache-
+
+      - name: 抓取最新数据
+        if: github.event_name != 'push'
+        run: python3 update_data.py
+
+      - name: 有变化就提交
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.js 宏观策略看板_单文件版.html
+          if git diff --cached --quiet; then
+            echo "数据没有变化"
+          else
+            git commit -m "自动更新数据 $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
+            git push
+          fi
+
+      - name: 整理网站文件
+        run: |
+          mkdir -p _site
+          cp index.html data.js 宏观策略看板_单文件版.html _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

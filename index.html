@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>宏观策略看板</title>
+<style>
+/* 布局：顶部导航 → 四个板块（首页 / 宏观数据 / 策略报告 / 重大事件），只用系统字体与内联脚本，国内网络可直接打开 */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --fg:#17202b; --muted:#5f6b7a; --line:#e1e5eb; --soft:#eef1f5;
+  --accent:#1d3d6b; --accent-fg:#ffffff; --up:#c23a2b; --down:#1b8455; --warn:#a2731a;
+  --c1:#1d3d6b; --c2:#c23a2b; --c3:#d08a17; --c4:#2a8a7e; --c5:#7b4fb0; --c6:#5a6b7f;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --serif:"Songti SC","STSong","SimSun","Noto Serif SC",serif;
+  --mono:"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+  --r:10px; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141b; --panel:#171e28; --fg:#e6eaf0; --muted:#98a3b1; --line:#2a3442; --soft:#1e2733;
+  --accent:#8db2e3; --accent-fg:#0f141b; --up:#ff7b6b; --down:#4cc38a; --warn:#e0b45a;
+  --c1:#8db2e3; --c2:#ff7b6b; --c3:#f0b44c; --c4:#5fc7b8; --c5:#b99be6; --c6:#a3b0bf; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141b; --panel:#171e28; --fg:#e6eaf0; --muted:#98a3b1; --line:#2a3442; --soft:#1e2733;
+  --accent:#8db2e3; --accent-fg:#0f141b; --up:#ff7b6b; --down:#4cc38a; --warn:#e0b45a;
+  --c1:#8db2e3; --c2:#ff7b6b; --c3:#f0b44c; --c4:#5fc7b8; --c5:#b99be6; --c6:#a3b0bf; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.6 var(--sans)}
+a{color:var(--accent)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.cap{font-size:12.5px;color:var(--muted)}
+.wrap{max-width:1320px;margin:0 auto;padding-block:0 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* 顶栏 */
+.topbar{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line)}
+.topbar .wrap{display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;padding-block:10px}
+.brand{font:700 19px/1.2 var(--serif);letter-spacing:.04em;margin-right:8px}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nav a{text-decoration:none;color:var(--muted);padding:6px 14px;border-radius:8px}
+.nav a:hover{background:var(--soft);color:var(--fg)}
+.nav a[aria-current="page"]{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.topbar .sp{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:5px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn.small{padding:3px 10px;font-size:12.5px}
+
+/* 通用 */
+main{display:grid;gap:22px;padding-top:22px}
+h1{font:700 26px/1.3 var(--serif);margin:0;letter-spacing:.02em}
+h2{font:700 18px/1.35 var(--serif);margin:0}
+h3{font-size:15px;font-weight:600;margin:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;min-width:0}
+.stack{display:grid;gap:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.between{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,30rem),1fr));gap:16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.seg button{border:0;background:none;padding:5px 14px;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:3px 11px;cursor:pointer;font-size:12.5px;color:var(--muted)}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.in{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:5px 9px;min-width:0}
+.empty{color:var(--muted);text-align:center;padding:28px;border:1px dashed var(--line);border-radius:var(--r)}
+.ext::after{content:" ↗";font-size:.9em}
+
+/* 首页 */
+.hero{display:grid;gap:6px}
+.hero .take{max-width:80ch;line-height:1.8;font-size:15px}
+.hero .take b{font-weight:600;font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,11.5rem),1fr));gap:10px}
+.tile{all:unset;box-sizing:border-box;cursor:pointer;background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:grid;gap:2px;min-width:0}
+.tile:hover{border-color:var(--accent)}
+.tile:focus-visible{outline:2px solid var(--accent)}
+.tile .v{font:600 24px/1.2 var(--serif);font-variant-numeric:tabular-nums}
+.tile .v small{font:12px var(--sans);color:var(--muted);margin-left:3px}
+.chg{font-size:12.5px;font-variant-numeric:tabular-nums}
+.chg.up{color:var(--up)} .chg.down{color:var(--down)} .chg.flat{color:var(--muted)}
+
+/* 数据页 */
+.dataview{display:grid;grid-template-columns:minmax(15rem,19rem) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:820px){.dataview{grid-template-columns:minmax(0,1fr)}}
+.side{position:sticky;top:64px}
+@media (max-width:820px){.side{position:static}}
+.list{display:grid;gap:10px;max-height:calc(100vh - 230px);overflow:auto;padding-right:4px}
+@media (max-width:820px){.list{max-height:24rem}}
+.group .gh{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);padding:2px 0;border-bottom:1px solid var(--line);margin-bottom:2px}
+.group .gh button{border:0;background:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0}
+.item{display:flex;gap:8px;align-items:flex-start;padding:4px 6px;border-radius:6px;cursor:pointer}
+.item:hover{background:var(--soft)}
+.item input{margin-top:4px;accent-color:var(--accent)}
+.item .n{line-height:1.4}
+.item .c{font-size:11.5px;color:var(--muted)}
+.range{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.range select{padding:5px 6px}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr));gap:14px}
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.links{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px}
+.links a{color:var(--muted);text-decoration:none}
+.links a:hover{color:var(--accent);text-decoration:underline}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:6px 10px;font-size:12px;white-space:nowrap;z-index:5}
+.tip .d{color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.tbox{overflow:auto;max-height:30rem;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child,td.l,th.l{text-align:left}
+th{position:sticky;top:0;background:var(--panel);font-weight:600;color:var(--muted);z-index:1}
+tbody tr:hover{background:var(--soft)}
+
+details.side>summary{display:flex;justify-content:space-between;align-items:baseline;gap:8px;cursor:pointer;list-style:none;font-weight:600}
+details.side>summary::-webkit-details-marker{display:none}
+details.side>summary::after{content:"▾";color:var(--muted);margin-left:auto;transition:transform .15s}
+details.side[open]>summary::after{transform:rotate(180deg)}
+details.side>summary .cap{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.picker-done{display:none}
+.charts{scroll-margin-top:110px}
+
+/* 手机与窄屏 */
+@media (max-width:820px){
+  .picker-done{display:inline-block}
+  .chart svg{max-height:260px}
+}
+@media (max-width:640px){
+  body{font-size:14.5px}
+  .topbar .wrap{gap:6px 10px;padding-block:8px}
+  .brand{font-size:17px}
+  .topbar .cap{display:none}
+  .nav{order:5;width:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav a{padding:6px 12px;white-space:nowrap}
+  main{gap:16px;padding-top:14px}
+  h1{font-size:21px}
+  h2{font-size:16.5px}
+  .card{padding:12px 13px}
+  .hero .take{font-size:14.5px;line-height:1.75}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .tile{padding:8px 10px}
+  .tile .v{font-size:21px}
+  .tile .chg{font-size:11.5px}
+  .range{gap:8px}
+  .range .seg button{padding:5px 11px}
+  #layout{margin-left:auto}
+  th,td{padding:6px 8px;font-size:12.5px}
+  .rep h3{font-size:15.5px}
+  .evs li{padding:10px 12px;gap:4px}
+}
+
+/* 报告与事件 */
+.reps{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr));gap:14px}
+.rep{display:flex;flex-direction:column;gap:6px}
+.rep .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.rep h3{font:600 16px/1.45 var(--serif)}
+.rep p{margin:0;line-height:1.7;max-width:70ch}
+.rep .foot{margin-top:auto;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:6px}
+.st{font-size:12px;border:1px solid currentColor;border-radius:4px;padding:0 7px}
+.st.偏多{color:var(--up)} .st.中性{color:var(--warn)} .st.偏谨慎{color:var(--down)}
+.evs{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.evs li{display:grid;grid-template-columns:6rem minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+@media (max-width:560px){.evs li{grid-template-columns:minmax(0,1fr)}}
+.evs .t{font-weight:600}
+.evs .tag{font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 6px;margin-left:6px;font-weight:400}
+.evs .soon{color:var(--up);font-weight:600}
+footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px;line-height:1.8}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:13px;z-index:30}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <span class="brand">宏观策略看板</span>
+    <nav class="nav" aria-label="板块">
+      <a href="#home" data-tab="home">首页</a>
+      <a href="#data" data-tab="data">宏观数据</a>
+      <a href="#reports" data-tab="reports">策略报告</a>
+      <a href="#events" data-tab="events">重大事件</a>
+    </nav>
+    <span class="sp"></span>
+    <span class="cap">数据更新于 <span class="num" id="updated"></span></span>
+    <button class="btn small" id="theme" type="button">深色 / 浅色</button>
+  </div>
+</header>
+
+<div class="wrap">
+<main>
+  <!-- ========== 首页 ========== -->
+  <section data-page="home" class="stack" style="gap:18px">
+    <div class="hero">
+      <h1>国内外宏观速览</h1>
+      <p class="take" id="take"></p>
+    </div>
+    <div class="two">
+      <div class="card stack">
+        <div class="between"><h2>国内</h2><a class="btn small" href="#data" data-region="国内">查国内数据 →</a></div>
+        <div class="tiles" id="tiles-cn"></div>
+      </div>
+      <div class="card stack">
+        <div class="between"><h2>海外</h2><a class="btn small" href="#data" data-region="海外">查海外数据 →</a></div>
+        <div class="tiles" id="tiles-gl"></div>
+      </div>
+    </div>
+    <div class="two">
+      <div class="card stack">
+        <div class="between"><h2>近期关注</h2><a class="btn small" href="#events">全部事件 →</a></div>
+        <ul class="evs" id="home-ev"></ul>
+      </div>
+      <div class="card stack">
+        <div class="between"><h2>最新机构观点</h2><a class="btn small" href="#reports">全部报告 →</a></div>
+        <div class="stack" id="home-rep"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 宏观数据 ========== -->
+  <section data-page="data" class="stack" hidden>
+    <div class="between">
+      <h1>宏观数据查询</h1>
+      <span class="cap">勾选多个指标即可批量查询；每张图下方链接直达官方数据库和发布稿</span>
+    </div>
+    <div class="card range">
+      <div class="seg" id="region">
+        <button type="button" data-v="国内" aria-pressed="true">国内</button>
+        <button type="button" data-v="海外" aria-pressed="false">海外</button>
+      </div>
+      <span class="cap">时间</span>
+      <select class="in num" id="y1" aria-label="起始年份"></select><select class="in num" id="m1" aria-label="起始月份"></select>
+      <span class="cap">至</span>
+      <select class="in num" id="y2" aria-label="结束年份"></select><select class="in num" id="m2" aria-label="结束月份"></select>
+      <span class="row" id="quick">
+        <button class="chip" type="button" data-n="12">近 1 年</button>
+        <button class="chip" type="button" data-n="36">近 3 年</button>
+        <button class="chip" type="button" data-n="60">近 5 年</button>
+        <button class="chip" type="button" data-n="0">全部</button>
+      </span>
+      <span class="sp" style="flex:1"></span>
+      <div class="seg" id="layout">
+        <button type="button" data-v="grid" aria-pressed="true">分图</button>
+        <button type="button" data-v="overlay" aria-pressed="false">叠加对比</button>
+      </div>
+    </div>
+    <div class="dataview">
+      <details class="card side" id="picker" open>
+        <summary><span>选择指标</span><span class="cap" id="selcount"></span></summary>
+        <div class="stack" style="margin-top:10px">
+          <input class="in" id="q" type="search" placeholder="搜索指标，如 PPI、M2、失业率" aria-label="搜索指标">
+          <div class="list" id="list"></div>
+          <div class="row"><button class="btn small" type="button" id="clear">清空选择</button><button class="btn small primary picker-done" type="button" id="done">查看图表</button></div>
+        </div>
+      </details>
+      <div class="stack" style="min-width:0">
+        <div class="charts" id="charts"></div>
+        <div class="card stack">
+          <div class="between">
+            <h3 id="ttitle">数据表</h3>
+            <div class="row"><span class="cap" id="tnote"></span>
+              <button class="btn small" type="button" id="exp-csv">导出 CSV</button>
+              <button class="btn small" type="button" id="exp-xls">导出 Excel</button>
+              <button class="btn small" type="button" id="exp-all">导出全部指标</button>
+            </div>
+          </div>
+          <div class="tbox" id="tbox"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 策略报告 ========== -->
+  <section data-page="reports" class="stack" hidden>
+    <div class="between"><h1>机构宏观策略观点</h1><span class="cap">研报摘要与公开报道，点“原文”查看出处</span></div>
+    <div class="card row">
+      <div class="seg" id="kind">
+        <button type="button" data-v="全部" aria-pressed="true">全部</button>
+        <button type="button" data-v="国内券商" aria-pressed="false">国内券商</button>
+        <button type="button" data-v="外资机构" aria-pressed="false">外资机构</button>
+        <button type="button" data-v="其他机构" aria-pressed="false">其他</button>
+      </div>
+      <span class="row" id="stance">
+        <button class="chip" type="button" data-v="全部" aria-pressed="true">全部倾向</button>
+        <button class="chip" type="button" data-v="偏多" aria-pressed="false">偏多</button>
+        <button class="chip" type="button" data-v="中性" aria-pressed="false">中性</button>
+        <button class="chip" type="button" data-v="偏谨慎" aria-pressed="false">偏谨慎</button>
+      </span>
+      <select class="in" id="inst" aria-label="机构"></select>
+      <input class="in" id="rq" type="search" placeholder="关键词，如 加息、红利" aria-label="搜索报告">
+      <span class="cap">日期</span><input class="in num" id="rfrom" type="date" aria-label="起始日期"><span class="cap">至</span><input class="in num" id="rto" type="date" aria-label="结束日期">
+    </div>
+    <p class="cap" id="rcount"></p>
+    <div class="reps" id="reps"></div>
+  </section>
+
+  <!-- ========== 重大事件 ========== -->
+  <section data-page="events" class="stack" hidden>
+    <div class="between"><h1>国内外重大事件</h1><span class="cap">议息、数据发布与重要会议，点链接查看官方资料</span></div>
+    <div class="card row">
+      <div class="seg" id="evr">
+        <button type="button" data-v="全部" aria-pressed="true">全部</button>
+        <button type="button" data-v="国内" aria-pressed="false">国内</button>
+        <button type="button" data-v="海外" aria-pressed="false">海外</button>
+      </div>
+      <span class="row" id="evt"></span>
+    </div>
+    <div class="stack"><h2>即将发生</h2><ul class="evs" id="ev-up"></ul></div>
+    <div class="stack"><h2>已发生</h2><ul class="evs" id="ev-past"></ul></div>
+  </section>
+
+  <footer>
+    数据来源：国家统计局「最新发布」、中国人民银行「金融统计数据报告」逐篇抓取；海外与部分国内序列来自 OECD 关键经济指标库官方接口。每个数据点在表格中都附出处链接。
+    OECD 序列按指数计算，与各国公布值可能有小数位差异。观点摘要仅供内部研究参考，以原报告为准。<br>
+    网站每天自动抓取最新数据。需要离线查看可下载 <a href="宏观策略看板_单文件版.html" download>单文件版</a>，用浏览器直接打开即可。
+  </footer>
+</main>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  const D = window.MACRO_DATA;
+  const $ = (s) => document.querySelector(s);
+  const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+  const link = (href, text, cls) => { const a = el('a', (cls || '') + ' ext', text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; };
+  const toast = (m) => { const t = el('div', 'toast', m); document.body.appendChild(t); setTimeout(() => t.remove(), 2400); };
+  const store = { get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+  const COLORS = ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6'];
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  if (!D) { document.querySelector('main').prepend(el('div', 'empty', '没有找到数据文件 data.js，请把 data.js 和本页面放在同一文件夹，或使用单文件版。')); return; }
+  $('#updated').textContent = D.updated;
+
+  // ---------- 主题 ----------
+  const th = store.get('mx-theme', null); if (th) document.documentElement.dataset.theme = th;
+  $('#theme').addEventListener('click', () => {
+    const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const nx = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = nx; store.set('mx-theme', nx); render();
+  });
+
+  // ---------- 数据索引 ----------
+  const CAT = new Map(D.catalog.map((c) => [c.sid, c]));
+  const OBS = new Map();
+  D.observations.forEach((o) => { if (!OBS.has(o.sid)) OBS.set(o.sid, []); OBS.get(o.sid).push(o); });
+  OBS.forEach((a) => a.sort((x, y) => x.date < y.date ? -1 : 1));
+  const ALLD = D.observations.map((o) => o.date).sort();
+  const MIN = ALLD[0], MAX = ALLD[ALLD.length - 1];
+  const latest = (sid) => { const a = OBS.get(sid) || []; return { last: a[a.length - 1], prev: a[a.length - 2] }; };
+
+  // ---------- 格式 ----------
+  const isRate = (c) => c.category === '利率汇率' && c.unit === '%';
+  const dec = (c) => c.unit === '元' || c.unit === '日元' ? (c.unit === '元' ? 4 : 2) : isRate(c) ? 2 : 1;
+  const fmt = (v, c) => v == null || isNaN(v) ? '' : Number(v).toFixed(dec(c));
+  const per = (d, c) => c && c.freq === '季' ? d.slice(0, 4) + ' 年 Q' + (+d.slice(5, 7) / 3) : d.slice(0, 4) + ' 年 ' + (+d.slice(5, 7)) + ' 月';
+  const chg = (sid) => {
+    const c = CAT.get(sid), { last, prev } = latest(sid);
+    if (!last || !prev) return { t: '', cls: 'flat' };
+    let v = last.value - prev.value; const bp = isRate(c);
+    v = bp ? Math.round(v * 100) : Math.round(v * 100) / 100;
+    if (v === 0) return { t: '较前值持平', cls: 'flat' };
+    const u = bp ? 'bp' : c.unit === '%' ? 'pct' : '';
+    return { t: (v > 0 ? '▲ +' : '▼ ') + (bp ? v : v.toFixed(dec(c))) + (u ? ' ' + u : '') + '　前值 ' + fmt(prev.value, c), cls: v > 0 ? 'up' : 'down' };
+  };
+  const addM = (ym, n) => { let y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12; return y + '-' + String(m + 1).padStart(2, '0'); };
+  const mdiff = (a, b) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5, 7) - +a.slice(5, 7));
+
+  // ---------- 路由 ----------
+  let tab = 'home';
+  const TABS = ['home', 'data', 'reports', 'events'];
+  const go = (want) => {
+    const h = typeof want === 'string' ? want : location.hash.slice(1); tab = TABS.includes(h) ? h : 'home';
+    document.querySelectorAll('[data-page]').forEach((s) => { s.hidden = s.dataset.page !== tab; });
+    document.querySelectorAll('.nav a').forEach((a) => { if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+    window.scrollTo(0, 0); render();
+  };
+  addEventListener('hashchange', () => go());
+  // 直接处理站内链接点击：从微信、邮件或本地文件打开时也能切换板块
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href^="#"]'); if (!a) return;
+    const t = a.getAttribute('href').slice(1); if (!TABS.includes(t)) return;
+    e.preventDefault();
+    try { history.pushState(null, '', '#' + t); } catch (err) {}
+    go(t);
+  });
+  document.querySelectorAll('[data-region]').forEach((a) => a.addEventListener('click', () => { S.region = a.dataset.region; save(); }));
+
+  // ---------- 数据页状态 ----------
+  const S = Object.assign({ region: '国内', sel: ['cn_cpi', 'cn_ppi'], from: addM(MAX, -35), to: MAX, layout: 'grid', q: '' }, store.get('mx-state', {}));
+  S.sel = (S.sel || []).filter((s) => CAT.has(s));
+  const save = () => store.set('mx-state', { region: S.region, sel: S.sel, from: S.from, to: S.to, layout: S.layout });
+  const press = (box, v) => box.querySelectorAll('[data-v]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+  const segBind = (box, fn) => box.addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) { press(box, b.dataset.v); fn(b.dataset.v); } });
+
+  // ---------- 小图 ----------
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+  function spark(parent, rows, color){
+    const W = 160, H = 30; const s = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', height: H, preserveAspectRatio: 'none' }, parent);
+    if (rows.length < 2) return;
+    const vs = rows.map((r) => r.value), lo = Math.min(...vs), hi = Math.max(...vs) || lo + 1;
+    const x = (i) => 2 + i * (W - 6) / (rows.length - 1), y = (v) => H - 3 - (v - lo) / ((hi - lo) || 1) * (H - 6);
+    sv('path', { d: rows.map((r, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(r.value).toFixed(1)).join(' '), fill: 'none', stroke: color, 'stroke-width': 1.6, 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke' }, s);
+  }
+
+  // ---------- 折线图（横轴固定为所选时间段，便于对照） ----------
+  function niceTicks(lo, hi, n){
+    const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p;
+    const step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+    const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(+v.toFixed(10)); return out;
+  }
+  function lineChart(box, series, from, to){
+    box.replaceChildren();
+    const W = Math.max(300, box.clientWidth || 600), H = 240, m = { t: 14, r: 16, b: 28, l: 44 };
+    const all = series.flatMap((s) => s.rows.map((r) => r.value));
+    if (!all.length) { box.appendChild(el('div', 'empty', '所选时间段内没有数据')); return; }
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (series.some((s) => s.c.sid.includes('pmi'))) { lo = Math.min(lo, 50); hi = Math.max(hi, 50); }
+    const pad = (hi - lo) * 0.1 || Math.abs(hi) * 0.1 || 1; lo -= pad; hi += pad;
+    const ticks = niceTicks(lo, hi, 5); lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+    const span = Math.max(1, mdiff(from, to));
+    const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' }, box);
+    const c0 = series[0].c;
+    const lbl = ticks.map((t) => fmt(t, c0));
+    m.l = Math.max(...lbl.map((s) => s.length)) * 7 + 12;
+    const x = (d) => m.l + mdiff(from, d) / span * (W - m.l - m.r);
+    const y = (v) => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+    ticks.forEach((t, i) => {
+      sv('line', { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: css('--line') }, svg);
+      sv('text', { x: m.l - 6, y: y(t) + 4, 'text-anchor': 'end', 'font-size': 11, fill: css('--muted') }, svg).textContent = lbl[i];
+    });
+    // 横轴刻度：按跨度选择年 / 半年 / 季
+    const stepM = span > 72 ? 12 : span > 30 ? 6 : span > 12 ? 3 : 2;
+    for (let d = from; d <= to; d = addM(d, 1)) {
+      if (mdiff('2000-01', d) % stepM !== 0) continue;
+      const xx = x(d); sv('line', { x1: xx, x2: xx, y1: H - m.b, y2: H - m.b + 4, stroke: css('--muted') }, svg);
+      sv('text', { x: xx, y: H - 8, 'text-anchor': 'middle', 'font-size': 11, fill: css('--muted') }, svg).textContent = stepM === 12 ? d.slice(0, 4) : d.slice(2, 4) + '/' + d.slice(5, 7);
+    }
+    sv('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: css('--muted'), opacity: .5 }, svg);
+    const ref = series.some((s) => s.c.sid.includes('pmi')) ? 50 : (lo < 0 && hi > 0 ? 0 : null);
+    if (ref != null) sv('line', { x1: m.l, x2: W - m.r, y1: y(ref), y2: y(ref), stroke: css('--fg'), opacity: .45, 'stroke-dasharray': '4 3' }, svg);
+    series.forEach((s) => {
+      const step = s.c.freq === '季' ? 3 : 1; let d = '';
+      s.rows.forEach((r, i) => { const brk = i === 0 || mdiff(s.rows[i - 1].date, r.date) > step; d += (brk ? 'M' : 'L') + x(r.date).toFixed(1) + ' ' + y(r.value).toFixed(1); });
+      sv('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+      if (s.rows.length <= 40) s.rows.forEach((r) => sv('circle', { cx: x(r.date), cy: y(r.value), r: 2.2, fill: s.color }, svg));
+      const l = s.rows[s.rows.length - 1]; if (l) sv('circle', { cx: x(l.date), cy: y(l.value), r: 4, fill: s.color }, svg);
+    });
+    // 悬浮提示
+    const tip = el('div', 'tip'); tip.hidden = true; box.appendChild(tip);
+    const guide = sv('line', { y1: m.t, y2: H - m.b, stroke: css('--muted'), opacity: 0 }, svg);
+    const hit = sv('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' }, svg);
+    const move = (cx) => {
+      const r = svg.getBoundingClientRect(), px = (cx - r.left) * W / r.width;
+      const d = addM(from, Math.round((px - m.l) / (W - m.l - m.r) * span));
+      guide.setAttribute('x1', x(d)); guide.setAttribute('x2', x(d)); guide.setAttribute('opacity', .5);
+      tip.replaceChildren(el('div', 'd', per(d, null)));
+      series.forEach((s) => {
+        const hitRow = s.rows.find((q) => q.date === d) || (s.c.freq === '季' ? s.rows.find((q) => mdiff(d, q.date) >= 0 && mdiff(d, q.date) < 3) : null);
+        const line = el('div'); const dot = el('span', '', '● '); dot.style.color = s.color;
+        line.append(dot, document.createTextNode(s.c.name + '　' + (hitRow ? fmt(hitRow.value, s.c) + (s.c.unit === '%' ? '%' : '') : '—')));
+        tip.appendChild(line);
+      });
+      tip.hidden = false;
+      const left = x(d) / W * r.width; tip.style.left = Math.min(Math.max(0, left + 12), r.width - tip.offsetWidth) + 'px'; tip.style.top = '6px';
+    };
+    hit.addEventListener('mousemove', (e) => move(e.clientX));
+    hit.addEventListener('touchstart', (e) => move(e.touches[0].clientX), { passive: true });
+    hit.addEventListener('mouseleave', () => { tip.hidden = true; guide.setAttribute('opacity', 0); });
+  }
+
+  // ---------- 首页 ----------
+  const HOME_CN = ['cn_gdp', 'cn_cpi', 'cn_ppi', 'cn_pmi', 'cn_ip', 'cn_retail', 'cn_exp', 'cn_m2', 'cn_tsf'];
+  const HOME_GL = ['us_gdp', 'us_cpi', 'us_ur', 'us_ffr', 'us_10y', 'ea_gdp', 'ea_rate', 'jp_call', 'jp_10y'];
+  const vtxt = (sid) => { const c = CAT.get(sid), l = latest(sid).last; return l ? fmt(l.value, c) + (c.unit === '%' ? '%' : '') : '—'; };
+  function renderHome(){
+    const take = $('#take'); take.replaceChildren();
+    const B = (sid) => { const b = el('b', '', vtxt(sid)); b.title = CAT.get(sid) ? CAT.get(sid).name + '，' + per(latest(sid).last.date, CAT.get(sid)) : ''; return b; };
+    const T = (s) => document.createTextNode(s);
+    const has = (...ids) => ids.every((i) => CAT.has(i) && latest(i).last);
+    if (has('cn_gdp', 'cn_cpi', 'cn_ppi', 'cn_pmi')) take.append(T('国内：最新一季 GDP 同比 '), B('cn_gdp'), T('，CPI 同比 '), B('cn_cpi'), T('，PPI 同比 '), B('cn_ppi'), T('，制造业 PMI '), B('cn_pmi'), T('。'));
+    if (has('cn_m2', 'cn_tsf')) take.append(T('M2 同比 '), B('cn_m2'), T('，社融存量同比 '), B('cn_tsf'), T('。'));
+    if (has('us_cpi', 'us_ur', 'us_ffr')) take.append(T('海外：美国 CPI 同比 '), B('us_cpi'), T('，失业率 '), B('us_ur'), T('，联邦基金利率月均 '), B('us_ffr'), T('。'));
+    if (has('ea_rate', 'jp_call')) take.append(T('欧元区 €STR 月均 '), B('ea_rate'), T('，日本隔夜利率 '), B('jp_call'), T('。'));
+    const tiles = (box, ids, color) => {
+      box.replaceChildren();
+      ids.filter((s) => CAT.has(s) && latest(s).last).forEach((sid) => {
+        const c = CAT.get(sid), l = latest(sid).last, ch = chg(sid);
+        const t = el('a', 'tile'); t.href = '#data';
+        t.appendChild(el('span', 'cap', c.name));
+        const v = el('span', 'v', fmt(l.value, c)); if (c.unit) v.appendChild(el('small', '', c.unit)); t.appendChild(v);
+        t.appendChild(el('span', 'chg ' + ch.cls, ch.t));
+        t.appendChild(el('span', 'cap', per(l.date, c)));
+        spark(t, (OBS.get(sid) || []).slice(-24), color);
+        t.addEventListener('click', () => { S.region = c.region; S.sel = [sid]; save(); });
+        box.appendChild(t);
+      });
+    };
+    tiles($('#tiles-cn'), HOME_CN, css('--c1')); tiles($('#tiles-gl'), HOME_GL, css('--c2'));
+    $('#home-ev').replaceChildren(...upcoming().slice(0, 5).map(evItem));
+    $('#home-rep').replaceChildren(...D.reports.slice().sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 4).map((r) => repCard(r, false)));
+  }
+
+  // ---------- 数据页 ----------
+  const years = []; for (let y = +MIN.slice(0, 4); y <= +MAX.slice(0, 4); y++) years.push(y);
+  const fillSel = (s, arr, f) => s.replaceChildren(...arr.map((v) => new Option(f(v), v)));
+  [['#y1'], ['#y2']].forEach(([s]) => fillSel($(s), years, (y) => y + ' 年'));
+  ['#m1', '#m2'].forEach((s) => fillSel($(s), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], (m) => m + ' 月'));
+  const readRange = () => {
+    let f = $('#y1').value + '-' + String($('#m1').value).padStart(2, '0'), t = $('#y2').value + '-' + String($('#m2').value).padStart(2, '0');
+    if (f > t) [f, t] = [t, f];
+    S.from = f < MIN ? MIN : f; S.to = t > MAX ? MAX : t; save(); renderData();
+  };
+  ['#y1', '#m1', '#y2', '#m2'].forEach((s) => $(s).addEventListener('change', readRange));
+  $('#quick').addEventListener('click', (e) => { const b = e.target.closest('[data-n]'); if (!b) return; const n = +b.dataset.n; S.to = MAX; S.from = n ? addM(MAX, -(n - 1)) : MIN; if (S.from < MIN) S.from = MIN; save(); renderData(); });
+  segBind($('#region'), (v) => { S.region = v; save(); renderData(); });
+  segBind($('#layout'), (v) => { S.layout = v; save(); renderData(); });
+  $('#q').addEventListener('input', (e) => { S.q = e.target.value.trim().toLowerCase(); renderList(); });
+  $('#clear').addEventListener('click', () => { S.sel = []; save(); renderData(); });
+  // 手机上指标列表默认收起，选好后一键跳到图表
+  const narrow = matchMedia('(max-width: 820px)');
+  if (narrow.matches) $('#picker').open = false;
+  $('#done').addEventListener('click', () => { if (narrow.matches) $('#picker').open = false; $('#charts').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+
+  function renderList(){
+    const box = $('#list'); box.replaceChildren(); const sel = new Set(S.sel);
+    const items = D.catalog.filter((c) => c.region === S.region && (!S.q || (c.name + c.category + c.country + c.origin).toLowerCase().includes(S.q)));
+    const groups = new Map(); items.forEach((c) => { const k = c.category; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
+    groups.forEach((cs, k) => {
+      const g = el('div', 'group'); const gh = el('div', 'gh'); gh.appendChild(el('span', '', k));
+      const all = el('button', '', '全选'); all.type = 'button'; all.addEventListener('click', () => { cs.forEach((c) => { if (!S.sel.includes(c.sid)) S.sel.push(c.sid); }); save(); renderData(); });
+      gh.appendChild(all); g.appendChild(gh);
+      cs.forEach((c) => {
+        const lab = el('label', 'item'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = sel.has(c.sid);
+        cb.addEventListener('change', () => { S.sel = cb.checked ? S.sel.concat(c.sid) : S.sel.filter((s) => s !== c.sid); save(); renderData(); });
+        const a = OBS.get(c.sid) || [];
+        const tx = el('span'); tx.append(el('div', 'n', c.name), el('div', 'c', c.country + ' · ' + c.freq + '度 · ' + (a.length ? a[0].date.slice(0, 4) + '—' + a[a.length - 1].date.slice(0, 7) : '')));
+        lab.append(cb, tx); g.appendChild(lab);
+      });
+      box.appendChild(g);
+    });
+    if (!items.length) box.appendChild(el('div', 'empty', '没有匹配的指标'));
+    $('#selcount').textContent = '已选 ' + S.sel.length + ' 项' + (S.sel.length ? '：' + S.sel.slice(0, 3).map((s) => CAT.get(s) ? CAT.get(s).name : s).join('、') + (S.sel.length > 3 ? ' 等' : '') : '');
+  }
+  const inR = (d) => d >= S.from && d <= S.to;
+  function linksFor(c){
+    const r = el('div', 'links');
+    r.appendChild(link(c.db_url, c.db_name));
+    if (c.rel_url) r.appendChild(link(c.rel_url, '官方发布栏目'));
+    if (c.oecd_url) r.appendChild(link(c.oecd_url, 'OECD 数据库'));
+    if (c.api_url) r.appendChild(link(c.api_url, '数据接口'));
+    return r;
+  }
+  function renderData(){
+    press($('#region'), S.region); press($('#layout'), S.layout);
+    $('#y1').value = +S.from.slice(0, 4); $('#m1').value = +S.from.slice(5, 7); $('#y2').value = +S.to.slice(0, 4); $('#m2').value = +S.to.slice(5, 7);
+    document.querySelectorAll('#quick [data-n]').forEach((b) => { const n = +b.dataset.n; b.setAttribute('aria-pressed', String(S.to === MAX && (n ? S.from === addM(MAX, -(n - 1)) : S.from === MIN))); });
+    renderList();
+    const box = $('#charts'); box.replaceChildren();
+    const sel = S.sel.filter((s) => CAT.has(s));
+    if (!sel.length) { box.appendChild(el('div', 'empty', '在左侧勾选一个或多个指标查看走势')); $('#tbox').replaceChildren(); $('#tnote').textContent = ''; $('#ttitle').textContent = '数据表'; return; }
+    const ser = sel.map((sid, i) => ({ c: CAT.get(sid), rows: (OBS.get(sid) || []).filter((o) => inR(o.date)), color: css(COLORS[i % COLORS.length]) }));
+    if (S.layout === 'overlay' && ser.length > 1) {
+      const card = el('div', 'card stack'); card.style.gridColumn = '1 / -1';
+      const units = [...new Set(ser.map((s) => s.c.unit))];
+      card.appendChild(el('h3', '', '叠加对比 · ' + per(S.from, null) + ' 至 ' + per(S.to, null)));
+      if (units.length > 1) card.appendChild(el('div', 'cap', '注意：所选指标单位不同（' + units.map((u) => u || '指数').join('、') + '），共用同一纵轴。'));
+      const ch = el('div', 'chart'); card.appendChild(ch);
+      const lg = el('div', 'legend'); ser.forEach((s) => { const sp = el('span'); const i = el('i'); i.style.background = s.color; sp.append(i, document.createTextNode(s.c.name)); lg.appendChild(sp); });
+      card.appendChild(lg); box.appendChild(card); lineChart(ch, ser, S.from, S.to);
+    } else {
+      ser.forEach((s) => {
+        const card = el('div', 'card stack'); const h = el('div', 'between'); h.appendChild(el('h3', '', s.c.name));
+        const l = latest(s.c.sid).last; if (l) h.appendChild(el('span', 'cap num', '最新 ' + fmt(l.value, s.c) + (s.c.unit ? ' ' + s.c.unit : '') + '　' + per(l.date, s.c)));
+        card.appendChild(h);
+        const all = OBS.get(s.c.sid) || [];
+        if (all.length && all[0].date > S.from) card.appendChild(el('div', 'cap', '该指标可得数据从 ' + per(all[0].date, s.c) + ' 开始'));
+        const ch = el('div', 'chart'); card.appendChild(ch); card.appendChild(linksFor(s.c));
+        if (s.c.note) card.appendChild(el('div', 'cap', s.c.note));
+        box.appendChild(card); s.box = ch;
+      });
+      ser.forEach((s) => lineChart(s.box, [s], S.from, S.to));   // 卡片全部排好后再按实际宽度画图
+    }
+    renderTable(sel);
+  }
+  let TABLE = { head: [], rows: [], name: '' };
+  function renderTable(sel){
+    const tb = $('#tbox'); tb.replaceChildren(); const t = el('table'); const th = el('thead'), bd = el('tbody'), hr = el('tr'); th.appendChild(hr); t.append(th, bd); tb.appendChild(t);
+    const head = [], rows = [];
+    if (sel.length === 1) {
+      const c = CAT.get(sel[0]); $('#ttitle').textContent = c.name + ' · 时间序列';
+      head.push('期间', '数值' + (c.unit ? '（' + c.unit + '）' : ''), '出处');
+      head.forEach((h, i) => hr.appendChild(el('th', i === 2 ? 'l' : '', h)));
+      (OBS.get(c.sid) || []).filter((o) => inR(o.date)).slice().reverse().forEach((o) => {
+        const tr = el('tr'); tr.append(el('td', 'num', o.date), el('td', 'num', fmt(o.value, c)));
+        const td = el('td', 'l'); td.appendChild(o.src ? link(o.src, '官方发布稿') : link(c.api_url || c.db_url, c.api_url ? 'OECD 数据接口' : c.db_name)); tr.appendChild(td); bd.appendChild(tr);
+        rows.push([o.date, o.value, o.src || c.api_url || c.db_url]);
+      });
+      TABLE = { head, rows, name: c.name };
+    } else {
+      $('#ttitle').textContent = '批量查询 · ' + sel.length + ' 个指标';
+      head.push('期间', ...sel.map((s) => CAT.get(s).name + (CAT.get(s).unit ? '（' + CAT.get(s).unit + '）' : '')));
+      head.forEach((h) => hr.appendChild(el('th', '', h)));
+      const dates = [...new Set(sel.flatMap((s) => (OBS.get(s) || []).filter((o) => inR(o.date)).map((o) => o.date)))].sort().reverse();
+      const look = new Map(sel.map((s) => [s, new Map((OBS.get(s) || []).map((o) => [o.date, o.value]))]));
+      dates.forEach((d) => {
+        const tr = el('tr'); tr.appendChild(el('td', 'num', d)); const r = [d];
+        sel.forEach((s) => { const v = look.get(s).get(d); tr.appendChild(el('td', 'num', v == null ? '' : fmt(v, CAT.get(s)))); r.push(v == null ? '' : v); });
+        bd.appendChild(tr); rows.push(r);
+      });
+      TABLE = { head, rows, name: '批量查询' };
+    }
+    $('#tnote').textContent = rows.length + ' 期　' + S.from + ' 至 ' + S.to;
+  }
+
+  // ---------- 导出 ----------
+  function save2(name, blob){
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500); toast('已导出 ' + name);
+  }
+  const esc = (v) => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const xesc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const csv = (head, rows) => '﻿' + [head].concat(rows).map((r) => r.map(esc).join(',')).join('\r\n');
+  function xls(sheets){
+    // Excel 可直接打开的 SpreadsheetML 工作簿，每个指标一个工作表
+    let x = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="h"><Font ss:Bold="1"/></Style></Styles>';
+    sheets.forEach((s) => {
+      x += '<Worksheet ss:Name="' + xesc(s.name.replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31)) + '"><Table>';
+      x += '<Row>' + s.head.map((h) => '<Cell ss:StyleID="h"><Data ss:Type="String">' + xesc(h) + '</Data></Cell>').join('') + '</Row>';
+      s.rows.forEach((r) => { x += '<Row>' + r.map((v) => typeof v === 'number' ? '<Cell><Data ss:Type="Number">' + v + '</Data></Cell>' : '<Cell><Data ss:Type="String">' + xesc(v) + '</Data></Cell>').join('') + '</Row>'; });
+      x += '</Table></Worksheet>';
+    });
+    return x + '</Workbook>';
+  }
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  $('#exp-csv').addEventListener('click', () => { if (!TABLE.rows.length) return toast('先在左侧选择指标'); save2(TABLE.name + '_' + S.from + '_' + S.to + '.csv', new Blob([csv(TABLE.head, TABLE.rows)], { type: 'text/csv;charset=utf-8' })); });
+  $('#exp-xls').addEventListener('click', () => {
+    const sel = S.sel.filter((s) => CAT.has(s)); if (!sel.length) return toast('先在左侧选择指标');
+    const sheets = [{ name: '汇总', head: TABLE.head, rows: TABLE.rows }].concat(sel.length > 1 ? sel.map((sid) => { const c = CAT.get(sid); return { name: c.name, head: ['期间', '数值', '单位', '出处'], rows: (OBS.get(sid) || []).filter((o) => inR(o.date)).map((o) => [o.date, o.value, c.unit, o.src || c.api_url || c.db_url]) }; }) : []);
+    save2(TABLE.name + '_' + S.from + '_' + S.to + '.xls', new Blob([xls(sheets)], { type: 'application/vnd.ms-excel' }));
+  });
+  $('#exp-all').addEventListener('click', () => {
+    const head = ['指标代码', '指标', '地区', '类别', '频率', '单位', '期间', '数值', '出处', '官方数据库'];
+    const rows = D.observations.map((o) => { const c = CAT.get(o.sid); return c ? [o.sid, c.name, c.country, c.category, c.freq, c.unit, o.date, o.value, o.src || c.api_url, c.db_url] : null; }).filter(Boolean);
+    save2('宏观指标全集_' + stamp() + '.csv', new Blob([csv(head, rows)], { type: 'text/csv;charset=utf-8' }));
+  });
+
+  // ---------- 报告 ----------
+  function repCard(r, full){
+    const c = el('article', 'card rep');
+    const top = el('div', 'top'); const who = el('span'); who.append(el('b', '', r.institution), el('span', 'cap', '　' + r.team + ' · ' + r.kind)); top.append(who, el('span', 'st ' + r.stance, r.stance)); c.appendChild(top);
+    c.appendChild(el('h3', '', r.title)); if (full) c.appendChild(el('p', '', r.summary));
+    const f = el('div', 'foot cap'); f.appendChild(el('span', 'num', r.date + (r.tags ? '　' + r.tags : ''))); f.appendChild(link(r.url, '原文 · ' + r.source_name)); c.appendChild(f);
+    return c;
+  }
+  const R = { kind: '全部', stance: '全部', inst: '全部', q: '', from: '', to: '' };
+  segBind($('#kind'), (v) => { R.kind = v; renderReports(); });
+  segBind($('#stance'), (v) => { R.stance = v; renderReports(); });
+  $('#inst').addEventListener('change', (e) => { R.inst = e.target.value; renderReports(); });
+  $('#rq').addEventListener('input', (e) => { R.q = e.target.value.trim().toLowerCase(); renderReports(); });
+  $('#rfrom').addEventListener('change', (e) => { R.from = e.target.value; renderReports(); });
+  $('#rto').addEventListener('change', (e) => { R.to = e.target.value; renderReports(); });
+  const insts = [...new Set(D.reports.map((r) => r.institution))].sort((a, b) => a.localeCompare(b, 'zh'));
+  $('#inst').replaceChildren(new Option('全部机构', '全部'), ...insts.map((n) => new Option(n, n)));
+  function renderReports(){
+    const rows = D.reports.filter((r) => (R.kind === '全部' || r.kind === R.kind) && (R.stance === '全部' || r.stance === R.stance) && (R.inst === '全部' || r.institution === R.inst) && (!R.from || r.date >= R.from) && (!R.to || r.date <= R.to) && (!R.q || [r.institution, r.title, r.summary, r.tags, r.team].join(' ').toLowerCase().includes(R.q))).sort((a, b) => a.date < b.date ? 1 : -1);
+    $('#rcount').textContent = '共 ' + rows.length + ' 条';
+    $('#reps').replaceChildren(...(rows.length ? rows.map((r) => repCard(r, true)) : [el('div', 'empty', '没有符合条件的报告')]));
+  }
+
+  // ---------- 事件 ----------
+  const today = new Date(); const TODAY = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  const upcoming = () => D.events.filter((e) => e.date >= TODAY).sort((a, b) => a.date < b.date ? -1 : 1);
+  function evItem(e){
+    const li = el('li'); const days = Math.round((new Date(e.date + 'T00:00:00') - new Date(TODAY + 'T00:00:00')) / 864e5);
+    li.appendChild(el('span', 'cap num', e.date));
+    const mid = el('div'); const t = el('div', 't', e.title); t.appendChild(el('span', 'tag', e.region + ' · ' + e.type)); mid.appendChild(t);
+    if (e.detail) mid.appendChild(el('div', 'cap', e.detail));
+    mid.appendChild(link(e.url, e.url_name, 'cap')); li.appendChild(mid);
+    li.appendChild(el('span', 'cap' + (days >= 0 && days <= 7 ? ' soon' : ''), days > 0 ? days + ' 天后' : days === 0 ? '今天' : -days + ' 天前'));
+    return li;
+  }
+  const E = { region: '全部', type: '全部' };
+  segBind($('#evr'), (v) => { E.region = v; renderEvents(); });
+  const types = ['全部', ...new Set(D.events.map((e) => e.type))];
+  $('#evt').replaceChildren(...types.map((t) => { const b = el('button', 'chip', t === '全部' ? '全部类型' : t); b.type = 'button'; b.dataset.v = t; b.setAttribute('aria-pressed', String(t === '全部')); return b; }));
+  segBind($('#evt'), (v) => { E.type = v; renderEvents(); });
+  function renderEvents(){
+    const rows = D.events.filter((e) => (E.region === '全部' || e.region === E.region) && (E.type === '全部' || e.type === E.type));
+    const up = rows.filter((e) => e.date >= TODAY).sort((a, b) => a.date < b.date ? -1 : 1), past = rows.filter((e) => e.date < TODAY).sort((a, b) => a.date < b.date ? 1 : -1);
+    $('#ev-up').replaceChildren(...(up.length ? up.map(evItem) : [el('li', 'empty', '暂无即将发生的事件')]));
+    $('#ev-past').replaceChildren(...(past.length ? past.map(evItem) : [el('li', 'empty', '暂无')]));
+  }
+
+  function render(){ if (tab === 'home') renderHome(); if (tab === 'data') renderData(); if (tab === 'reports') renderReports(); if (tab === 'events') renderEvents(); }
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (tab === 'data') renderData(); }, 150); });
+  go();
+})();
+</script>
+</body>
+</html>
