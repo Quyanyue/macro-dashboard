@@ -36,7 +36,8 @@ STATUS = {}   # 各来源本次抓取情况：{来源: {'ok': n, 'fail': n}}
 
 def _source(url):
     return ('国家统计局' if 'stats.gov.cn' in url else '中国人民银行' if 'pbc.gov.cn' in url else 'OECD' if 'oecd.org' in url
-            else '东方财富研报' if 'eastmoney.com' in url else '新浪研报' if 'sina.com.cn' in url else '其他')
+            else '东方财富研报' if 'eastmoney.com' in url else '新浪研报' if 'sina.com.cn' in url
+            else '央行与美国统计机构日程' if any(k in url for k in ('federalreserve', 'ecb.europa', 'boj.or.jp', 'bls.gov', 'bea.gov', 'census.gov')) else '其他')
 
 
 def _mark(url, ok):
@@ -575,6 +576,247 @@ def reports():
     return out
 
 
+# ---------------------------------------------------------------- 重大事件日程
+EN_MON = {m: i + 1 for i, m in enumerate(['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'])}
+CN_NUM = '零一二三四'
+EV_LINKS = {
+    'fed': ('https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm', '美联储 FOMC 会议日程'),
+    'ecb': ('https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html', '欧央行会议日程'),
+    'boj': ('https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm', '日本央行会议日程'),
+    'nbs': ('https://www.stats.gov.cn/sj/fbrc/bnxxfb/', '国家统计局发布日程'),
+    'bls': ('https://www.bls.gov/schedule/news_release/{p}.htm', '美国劳工统计局发布日程'),
+    'bea': ('https://www.bea.gov/news/schedule', '美国经济分析局发布日程'),
+    'census': ('https://www.census.gov/economic-indicators/calendar-listview.html', '美国人口普查局发布日程'),
+}
+
+
+def _txt(s):
+    return re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', ' ', s))).strip()
+
+
+def _mon(s):
+    return EN_MON.get(s.strip().lower()[:3])
+
+
+def ev_fed():
+    t = fetch(EV_LINKS['fed'][0], cache=False)
+    out = []
+    parts = re.split(r'>\s*(\d{4}) FOMC Meetings\s*<', t)
+    for k in range(1, len(parts), 2):
+        year, seg = int(parts[k]), parts[k + 1]
+        for row in re.split(r'class="[^"]*\brow fomc-meeting"', seg)[1:]:
+            m = re.search(r'fomc-meeting__month[^>]*>(?:<strong>)?([A-Za-z/]+)', row)
+            d = re.search(r'fomc-meeting__date[^>]*>\s*([\d\-]+)(\*?)', row)
+            if not (m and d):
+                continue
+            mon = _mon(m.group(1).split('/')[-1])
+            day = int(d.group(1).split('-')[-1])
+            if not mon:
+                continue
+            link = re.search(r'href="(/newsevents/pressreleases/monetary\d{8}a\.htm)"', row)
+            out.append(dict(date='%d-%02d-%02d' % (year, mon, day), time='北京时间次日 2:00—3:00', region='海外', type='央行议息', org='美联储',
+                            title='美联储 FOMC 议息决议' + ('（含经济预测与点阵图）' if d.group(2) else ''),
+                            url='https://www.federalreserve.gov' + link.group(1) if link else EV_LINKS['fed'][0],
+                            url_name='美联储声明' if link else EV_LINKS['fed'][1]))
+    return out
+
+
+def ev_ecb():
+    t = fetch(EV_LINKS['ecb'][0], cache=False)
+    out = []
+    for dt, dd in re.findall(r'<dt[^>]*>(.*?)</dt>\s*<dd[^>]*>(.*?)</dd>', t, re.S):
+        dt, dd = _txt(dt), _txt(dd)
+        m = re.match(r'(\d{2})/(\d{2})/(\d{4})', dt)
+        if not m or 'non-monetary' in dd or 'monetary policy meeting' not in dd or 'Day 1' in dd:
+            continue
+        out.append(dict(date='%s-%s-%s' % (m.group(3), m.group(2), m.group(1)), time='20:15', region='海外', type='央行议息', org='欧央行',
+                        title='欧央行议息决议', url=EV_LINKS['ecb'][0], url_name=EV_LINKS['ecb'][1]))
+    return out
+
+
+def ev_boj():
+    t = fetch(EV_LINKS['boj'][0], cache=False)
+    out = []
+    for year, seg in re.findall(r'<h2 id="p(\d{4})">\d{4}</h2>(.*?)</table>', t, re.S):
+        for row in re.findall(r'<tr>(.*?)</tr>', seg, re.S):
+            tds = re.findall(r'<td>(.*?)</td>', row, re.S)
+            if not tds:
+                continue
+            cell = _txt(tds[0])
+            ms = re.findall(r'([A-Z][a-z]{2,4})\.?\s+(\d{1,2})', cell)
+            days = re.findall(r'(?:^|,\s*)(?:([A-Z][a-z]{2,4})\.?\s+)?(\d{1,2})\s*\(', cell)
+            if not ms or not days:
+                continue
+            mon = _mon(ms[-1][0])
+            day = int(days[-1][1])
+            link = re.search(r'href="(/en/mopo/mpmdeci/[^"]+\.pdf)"', tds[0])
+            out.append(dict(date='%s-%02d-%02d' % (year, mon, day), time='约 11:00—13:00', region='海外', type='央行议息', org='日本央行',
+                            title='日本央行议息决议', url='https://www.boj.or.jp' + link.group(1) if link else EV_LINKS['boj'][0],
+                            url_name='日本央行政策声明' if link else EV_LINKS['boj'][1]))
+    return out
+
+
+NBS_EVENT_ITEMS = {
+    '国民经济运行情况': ('月度经济数据（工业、社零、固投、地产等）', -1, 'ip'),
+    '采购经理指数月度报告': ('官方 PMI', 0, 'pmi'),
+    '居民消费价格指数月度报告': ('CPI', -1, 'cpi'),
+    '工业生产者价格指数月度报告': ('PPI', -1, 'ppi'),
+    '工业经济效益月度报告': ('规上工业企业利润', -1, 'profit'),
+}
+
+
+def ev_nbs():
+    t = sina = fetch(EV_LINKS['nbs'][0], cache=False)
+    y = re.search(r'(\d{4})年国家统计局主要统计信息发布日程', t)
+    if not y:
+        return []
+    year = int(y.group(1))
+    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', t, re.S)
+    out = []
+    for i, r in enumerate(rows):
+        tds = [_txt(c) for c in re.findall(r'<td[^>]*>(.*?)</td>', r, re.S)]
+        if len(tds) < 14 or tds[1] not in NBS_EVENT_ITEMS:
+            continue
+        label, shift, key = NBS_EVENT_ITEMS[tds[1]]
+        times = [_txt(c) for c in re.findall(r'<td[^>]*>(.*?)</td>', rows[i + 1], re.S)] if i + 1 < len(rows) else []
+        k = 0
+        for mon in range(1, 13):
+            cell = tds[1 + mon]
+            m = re.match(r'(\d{1,2})', cell)
+            if not m:
+                continue
+            tm = times[k] if k < len(times) else ''
+            k += 1
+            pm = mon + shift
+            py = year if pm > 0 else year - 1
+            pm = pm if pm > 0 else 12
+            title = ('%d月 %s' if label[0].isascii() else '%d月%s') % (pm, label)
+            if key == 'ip' and pm in (3, 6, 9, 12):
+                title = '%s季度 GDP 及%d月经济数据' % ('一二三四'[pm // 3 - 1], pm)
+            if key == 'ip' and mon == 1:
+                title = '%d年四季度 GDP 及全年经济数据' % py
+            if key == 'ip' and mon == 3:
+                title = '1—2月经济数据'
+            out.append(dict(date='%d-%02d-%02d' % (year, mon, int(m.group(1))), time=tm, region='国内', type='数据发布', org='国家统计局',
+                            title=title, url=EV_LINKS['nbs'][0], url_name=EV_LINKS['nbs'][1], _key=key, _period='%d-%02d' % (py, pm)))
+    return out
+
+
+def ev_bls():
+    path = os.path.join(CONTENT, 'bls_schedule.json')      # BLS 官方日程覆盖到次年年底，抓到一次就存下来
+    saved = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else []
+    out = []
+    names = {'cpi': ('CPI', 'us_cpi'), 'empsit': ('非农就业与失业率', 'us_ur'), 'ppi': ('PPI', None)}
+    for p, (label, sid) in names.items():
+        url = EV_LINKS['bls'][0].format(p=p)
+        t = fetch(url, cache=False, timeout=20)
+        if 'Release Date' not in t:     # BLS 官网拒绝程序访问时，读取互联网档案馆保存的同一页面
+            time.sleep(8)
+            t = fetch('https://web.archive.org/web/%did_/%s' % (datetime.now().year, url), cache=False, timeout=60)
+        for ref, d, tm in re.findall(r'<tr[^>]*>\s*<td>([A-Za-z]+ \d{4})</td>\s*<td>([A-Za-z]{3,4}\.? \d{1,2}, \d{4})</td>\s*<td>([^<]+)</td>', t):
+            mm = re.match(r'([A-Za-z]+)\.? (\d{1,2}), (\d{4})', d)
+            rm = re.match(r'([A-Za-z]+) (\d{4})', ref)
+            out.append(dict(date='%s-%02d-%02d' % (mm.group(3), _mon(mm.group(1)), int(mm.group(2))), time='20:30 / 21:30（北京时间）',
+                            region='海外', type='数据发布', org='美国劳工统计局', title=('美国%d月 %s' if label[0].isascii() else '美国%d月%s') % (_mon(rm.group(1)), label),
+                            url=url, url_name=EV_LINKS['bls'][1], _key=sid, _period='%s-%02d' % (rm.group(2), _mon(rm.group(1)))))
+    if out:
+        json.dump(out, open(path, 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
+        return out
+    print('  BLS 日程本次未抓到，沿用已保存的 %d 条' % len(saved))
+    return [dict(e) for e in saved]
+
+
+def ev_bea():
+    t = fetch(EV_LINKS['bea'][0], cache=False)
+    out = []
+    year = None
+    for r in re.findall(r'<tr[^>]*>(.*?)</tr>', t, re.S):
+        cells = [_txt(c) for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', r, re.S)]
+        if cells and re.match(r'Year (\d{4})', cells[0]):
+            year = int(cells[0][5:9]); continue
+        if len(cells) < 3 or not year:
+            continue
+        m = re.match(r'([A-Za-z]+) (\d{1,2})', cells[0])
+        name = cells[2]
+        if not m:
+            continue
+        title = None
+        g = re.match(r'GDP \((Advance|Second|Third) Estimate\)[^,]*, (\d)\w{2} Quarter (\d{4})', name)
+        if g:
+            title = '美国%s季度 GDP（%s）' % ('一二三四'[int(g.group(2)) - 1], {'Advance': '初值', 'Second': '修正值', 'Third': '终值'}[g.group(1)])
+        elif name.startswith('Personal Income and Outlays'):
+            pm = re.search(r', ([A-Za-z]+) \d{4}', name)
+            title = '美国%d月 PCE 物价与个人收支' % _mon(pm.group(1)) if pm else '美国 PCE 物价与个人收支'
+        elif name.startswith('U.S. International Trade in Goods and Services,'):
+            pm = re.search(r', ([A-Za-z]+) \d{4}', name)
+            title = '美国%d月贸易数据' % _mon(pm.group(1)) if pm else None
+        if title:
+            out.append(dict(date='%d-%02d-%02d' % (year, _mon(m.group(1)), int(m.group(2))), time='20:30 / 21:30（北京时间）', region='海外',
+                            type='数据发布', org='美国经济分析局', title=title, url=EV_LINKS['bea'][0], url_name=EV_LINKS['bea'][1],
+                            _key='us_gdp' if g else None, _period=None))
+    return out
+
+
+def ev_census():
+    t = fetch(EV_LINKS['census'][0], cache=False)
+    out = []
+    for r in re.findall(r'<tr[^>]*>(.*?)</tr>', t, re.S):
+        c = [_txt(x) for x in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', r, re.S)]
+        if len(c) >= 4 and c[0].startswith('Advance Monthly Sales for Retail'):
+            m = re.match(r'([A-Za-z]+) (\d{1,2}), (\d{4})', c[1]); p = re.match(r'([A-Za-z]+) (\d{4})', c[3])
+            if m and p:
+                out.append(dict(date='%s-%02d-%02d' % (m.group(3), _mon(m.group(1)), int(m.group(2))), time='20:30 / 21:30（北京时间）',
+                                region='海外', type='数据发布', org='美国人口普查局', title='美国%d月零售销售' % _mon(p.group(1)),
+                                url=EV_LINKS['census'][0], url_name=EV_LINKS['census'][1]))
+    return out
+
+
+def events(nbs_items):
+    from datetime import timedelta
+    today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
+    lo, hi = str(today - timedelta(days=75)), str(today + timedelta(days=200))
+    got = []
+    for name, fn in (('美联储', ev_fed), ('欧央行', ev_ecb), ('日本央行', ev_boj), ('统计局', ev_nbs), ('BLS', ev_bls), ('BEA', ev_bea), ('Census', ev_census)):
+        try:
+            rows = fn()
+        except Exception as e:
+            rows = []
+            print('  ! %s 日程读取失败：%s' % (name, e))
+        print('  %s 日程 %d 条' % (name, len(rows)))
+        got += rows
+    # 已发布的统计局数据：链接到当天的发布稿，并写上公布值
+    nbs_kw = {'cpi': '居民消费价格', 'ppi': '工业生产者出厂价格', 'pmi': '采购经理指数', 'ip': '规模以上工业增加值', 'profit': '工业企业利润'}
+    sid_of = {'cpi': 'cn_cpi', 'ppi': 'cn_ppi', 'pmi': 'cn_pmi', 'ip': 'cn_ip', 'profit': 'cn_profit', 'us_cpi': 'us_cpi', 'us_ur': 'us_ur'}
+    label = {'cn_cpi': 'CPI 同比', 'cn_ppi': 'PPI 同比', 'cn_pmi': '制造业 PMI', 'cn_ip': '规上工业增加值同比', 'cn_profit': '工业企业利润累计同比',
+             'us_cpi': 'CPI 同比', 'us_ur': '失业率'}
+    for e in got:
+        key, per = e.pop('_key', None), e.pop('_period', None)
+        e.setdefault('detail', '')
+        if e['date'] > str(today):
+            continue
+        if e['org'] == '国家统计局' and key in nbs_kw:
+            stamp = 't' + e['date'].replace('-', '')
+            hit = [u for u, t in nbs_items.items() if stamp in u and nbs_kw[key] in t and '解读' not in t]
+            if hit:
+                e['url'], e['url_name'] = sorted(hit)[0], '统计局发布稿'
+        sid = sid_of.get(key)
+        if sid and per and (sid, per) in OBS:
+            v = OBS[(sid, per)]['value']
+            e['detail'] = '公布值：%s %s' % (label[sid], ('%.1f' % v) + ('' if sid == 'cn_pmi' else '%'))
+    manual = json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8'))
+    allv = [e for e in got + manual if lo <= e['date'] <= hi]
+    seen, out = set(), []
+    for e in sorted(allv, key=lambda x: (x['date'], x.get('time', ''), x['title'])):
+        k = (e['date'], e['title'])
+        if k in seen:
+            continue
+        seen.add(k)
+        e['eid'] = e.get('eid') or hashlib.md5((e['date'] + e['title']).encode()).hexdigest()[:10]
+        out.append(e)
+    print('  事件共 %d 条' % len(out))
+    return out
+
+
 # ---------------------------------------------------------------- 指标目录
 NBS_DB = 'https://data.stats.gov.cn/dg/website/page.html#/pc/national/monthData'
 NBS_REL = 'https://www.stats.gov.cn/sj/zxfb/'
@@ -673,7 +915,9 @@ def main():
     if '--build' in sys.argv:              # 只改了网页或观点/事件时：不联网，直接重新打包
         prev = json.loads(open(os.path.join(ROOT, 'data.js'), encoding='utf-8').read().split('=', 1)[1].rstrip().rstrip(';'))
         prev['reports'] = json.load(open(os.path.join(CONTENT, 'reports.json'), encoding='utf-8'))
-        prev['events'] = json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8'))
+        manual = json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8'))
+        keep = [e for e in prev.get('events', []) if e.get('org')]
+        prev['events'] = sorted(keep + [m for m in manual if (m['date'], m['title']) not in {(e['date'], e['title']) for e in keep}], key=lambda x: x['date'])
         have = {c['sid'] for c in prev['catalog']}
         OECD_LINKS.update({c['sid']: (c['api_url'], c['oecd_url']) for c in prev['catalog'] if c.get('api_url')})
         build_catalog()
@@ -728,6 +972,15 @@ def main():
     for sid, date, value, src in SUPPLEMENT:
         if (sid, date) not in OBS:
             put(sid, date, value, src)
+    print('· 重大事件日程', flush=True)
+    try:
+        nbs_items = json.load(open(os.path.join(CACHE, 'nbs_index.json'), encoding='utf-8'))
+    except Exception:
+        nbs_items = {}
+    evs = events(nbs_items)
+    if len([e for e in evs if e.get('org')]) < 5 and prev.get('events'):
+        print('  日程抓取结果过少，沿用上次的事件列表')
+        evs = prev['events']
     build_catalog()
     obs = sorted((o for o in OBS.values() if o['date'] >= '2010-01'), key=lambda o: (o['sid'], o['date']))
     have = {o['sid'] for o in obs}
@@ -738,7 +991,7 @@ def main():
         catalog=catalog, observations=obs,
         reports=json.load(open(os.path.join(CONTENT, 'reports.json'), encoding='utf-8')),
         research=auto,
-        events=json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8')),
+        events=evs,
     )
     research = data.pop('research')
     open(prev_path, 'w', encoding='utf-8').write('window.MACRO_DATA = ' + json.dumps(data, ensure_ascii=False) + ';\n')

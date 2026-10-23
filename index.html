@@ -167,7 +167,7 @@ details.side>summary .cap{font-weight:400;overflow:hidden;text-overflow:ellipsis
 .rep .sum.open{-webkit-line-clamp:unset}
 .rep .lk{display:flex;gap:12px;flex-wrap:wrap}
 .evs{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.evs li{display:grid;grid-template-columns:6rem minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+.evs li{display:grid;grid-template-columns:8.5rem minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
 @media (max-width:560px){.evs li{grid-template-columns:minmax(0,1fr)}}
 .evs .t{font-weight:600}
 .evs .tag{font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 6px;margin-left:6px;font-weight:400}
@@ -299,7 +299,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
 
   <!-- ========== 重大事件 ========== -->
   <section data-page="events" class="stack" hidden>
-    <div class="between"><h1>国内外重大事件</h1><span class="cap">议息、数据发布与重要会议，点链接查看官方资料</span></div>
+    <div class="between"><h1>国内外重大事件</h1><span class="cap">每天自动抓取美联储、欧央行、日本央行议息日程，以及统计局、美国 BLS / BEA / Census 发布日程</span></div>
     <div class="card row">
       <div class="seg" id="evr">
         <button type="button" data-v="全部" aria-pressed="true">全部</button>
@@ -308,7 +308,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
       </div>
       <span class="row" id="evt"></span>
     </div>
-    <div class="stack"><h2>即将发生</h2><ul class="evs" id="ev-up"></ul></div>
+    <div class="stack"><h2>即将发生</h2><ul class="evs" id="ev-up"></ul><div class="row" style="justify-content:center"><button class="btn" type="button" id="ev-more" hidden>显示更多</button></div></div>
     <div class="stack"><h2>已发生</h2><ul class="evs" id="ev-past"></ul></div>
   </section>
 
@@ -712,14 +712,15 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
   const upcoming = () => D.events.filter((e) => e.date >= TODAY).sort((a, b) => a.date < b.date ? -1 : 1);
   function evItem(e){
     const li = el('li'); const days = Math.round((new Date(e.date + 'T00:00:00') - new Date(TODAY + 'T00:00:00')) / 864e5);
-    li.appendChild(el('span', 'cap num', e.date));
-    const mid = el('div'); const t = el('div', 't', e.title); t.appendChild(el('span', 'tag', e.region + ' · ' + e.type)); mid.appendChild(t);
+    const when = el('span', 'cap num'); when.appendChild(el('div', '', e.date)); if (e.time) when.appendChild(el('div', '', e.time)); li.appendChild(when);
+    const mid = el('div'); const t = el('div', 't', e.title); t.appendChild(el('span', 'tag', (e.org ? e.org + ' · ' : '') + e.type)); mid.appendChild(t);
     if (e.detail) mid.appendChild(el('div', 'cap', e.detail));
     mid.appendChild(link(e.url, e.url_name, 'cap')); li.appendChild(mid);
     li.appendChild(el('span', 'cap' + (days >= 0 && days <= 7 ? ' soon' : ''), days > 0 ? days + ' 天后' : days === 0 ? '今天' : -days + ' 天前'));
     return li;
   }
-  const E = { region: '全部', type: '全部' };
+  const E = { region: '全部', type: '全部', n: 20 };
+  $('#ev-more').addEventListener('click', () => { E.n += 20; renderEvents(); });
   segBind($('#evr'), (v) => { E.region = v; renderEvents(); });
   const types = ['全部', ...new Set(D.events.map((e) => e.type))];
   $('#evt').replaceChildren(...types.map((t) => { const b = el('button', 'chip', t === '全部' ? '全部类型' : t); b.type = 'button'; b.dataset.v = t; b.setAttribute('aria-pressed', String(t === '全部')); return b; }));
@@ -727,7 +728,8 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
   function renderEvents(){
     const rows = D.events.filter((e) => (E.region === '全部' || e.region === E.region) && (E.type === '全部' || e.type === E.type));
     const up = rows.filter((e) => e.date >= TODAY).sort((a, b) => a.date < b.date ? -1 : 1), past = rows.filter((e) => e.date < TODAY).sort((a, b) => a.date < b.date ? 1 : -1);
-    $('#ev-up').replaceChildren(...(up.length ? up.map(evItem) : [el('li', 'empty', '暂无即将发生的事件')]));
+    $('#ev-up').replaceChildren(...(up.length ? up.slice(0, E.n).map(evItem) : [el('li', 'empty', '暂无即将发生的事件')]));
+    $('#ev-more').hidden = up.length <= E.n;
     $('#ev-past').replaceChildren(...(past.length ? past.map(evItem) : [el('li', 'empty', '暂无')]));
   }
 
