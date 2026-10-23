@@ -161,6 +161,11 @@ details.side>summary .cap{font-weight:400;overflow:hidden;text-overflow:ellipsis
 .rep .foot{margin-top:auto;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:6px}
 .st{font-size:12px;border:1px solid currentColor;border-radius:4px;padding:0 7px}
 .st.偏多{color:var(--up)} .st.中性{color:var(--warn)} .st.偏谨慎{color:var(--down)}
+.st.type{color:var(--accent)}
+.rep .who{display:flex;flex-direction:column;gap:0;min-width:0}
+.rep .sum{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.rep .sum.open{-webkit-line-clamp:unset}
+.rep .lk{display:flex;gap:12px;flex-wrap:wrap}
 .evs{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .evs li{display:grid;grid-template-columns:6rem minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
 @media (max-width:560px){.evs li{grid-template-columns:minmax(0,1fr)}}
@@ -211,7 +216,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
         <ul class="evs" id="home-ev"></ul>
       </div>
       <div class="card stack">
-        <div class="between"><h2>最新机构观点</h2><a class="btn small" href="#reports">全部报告 →</a></div>
+        <div class="between"><h2>最新券商报告</h2><a class="btn small" href="#reports">全部报告 →</a></div>
         <div class="stack" id="home-rep"></div>
       </div>
     </div>
@@ -272,26 +277,24 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
 
   <!-- ========== 策略报告 ========== -->
   <section data-page="reports" class="stack" hidden>
-    <div class="between"><h1>机构宏观策略观点</h1><span class="cap">研报摘要与公开报道，点“原文”查看出处</span></div>
+    <div class="between"><h1>券商宏观与策略报告</h1><span class="cap">每天自动收录各券商最新宏观、策略研报，点开可看研报页与 PDF 原文</span></div>
     <div class="card row">
-      <div class="seg" id="kind">
+      <div class="seg" id="rtype">
         <button type="button" data-v="全部" aria-pressed="true">全部</button>
-        <button type="button" data-v="国内券商" aria-pressed="false">国内券商</button>
-        <button type="button" data-v="外资机构" aria-pressed="false">外资机构</button>
-        <button type="button" data-v="其他机构" aria-pressed="false">其他</button>
+        <button type="button" data-v="宏观" aria-pressed="false">宏观</button>
+        <button type="button" data-v="策略" aria-pressed="false">策略</button>
       </div>
-      <span class="row" id="stance">
-        <button class="chip" type="button" data-v="全部" aria-pressed="true">全部倾向</button>
-        <button class="chip" type="button" data-v="偏多" aria-pressed="false">偏多</button>
-        <button class="chip" type="button" data-v="中性" aria-pressed="false">中性</button>
-        <button class="chip" type="button" data-v="偏谨慎" aria-pressed="false">偏谨慎</button>
-      </span>
+      <div class="seg" id="rscope">
+        <button type="button" data-v="major" aria-pressed="true">主要券商</button>
+        <button type="button" data-v="all" aria-pressed="false">全部券商</button>
+      </div>
       <select class="in" id="inst" aria-label="机构"></select>
-      <input class="in" id="rq" type="search" placeholder="关键词，如 加息、红利" aria-label="搜索报告">
+      <input class="in" id="rq" type="search" placeholder="关键词，如 降息、出口、四季度" aria-label="搜索报告">
       <span class="cap">日期</span><input class="in num" id="rfrom" type="date" aria-label="起始日期"><span class="cap">至</span><input class="in num" id="rto" type="date" aria-label="结束日期">
     </div>
-    <p class="cap"><span id="rcount"></span>　链接打不开？在海外开着 VPN 时，请把 VPN 切换为「规则 / 智能分流」模式，国内网站需直连才能打开。</p>
+    <p class="cap" id="rcount"></p>
     <div class="reps" id="reps"></div>
+    <div class="row" style="justify-content:center"><button class="btn" type="button" id="rmore" hidden>显示更多</button></div>
   </section>
 
   <!-- ========== 重大事件 ========== -->
@@ -310,9 +313,8 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
   </section>
 
   <footer>
-    数据来源：国家统计局「最新发布」、中国人民银行「金融统计数据报告」逐篇抓取；海外与部分国内序列来自 OECD 关键经济指标库官方接口。每个数据点在表格中都附出处链接。
+    数据来源：国家统计局「最新发布」、中国人民银行「金融统计数据报告」逐篇抓取；券商研报来自东方财富研报中心；海外与部分国内序列来自 OECD 关键经济指标库官方接口。每个数据点在表格中都附出处链接。
     OECD 序列按指数计算，与各国公布值可能有小数位差异。观点摘要仅供内部研究参考，以原报告为准。<br>
-    国内政府与财经网站需直连访问：在海外使用 VPN 时请切换为规则模式；国家统计局「国家数据库查询」仅对中国境内网络开放。<br>
     网站每天自动抓取最新数据。需要离线查看可下载 <a href="宏观策略看板_单文件版.html" download>单文件版</a>，用浏览器直接打开即可。
   </footer>
 </main>
@@ -504,7 +506,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
     };
     tiles($('#tiles-cn'), HOME_CN, css('--c1')); tiles($('#tiles-gl'), HOME_GL, css('--c2'));
     $('#home-ev').replaceChildren(...upcoming().slice(0, 5).map(evItem));
-    $('#home-rep').replaceChildren(...D.reports.slice().sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 4).map((r) => repCard(r, false)));
+    $('#home-rep').replaceChildren(...ALLR.filter((r) => r.pick || isMajor(r.institution)).slice(0, 5).map((r) => repCard(r, false)));
   }
 
   // ---------- 数据页 ----------
@@ -653,26 +655,55 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
   });
 
   // ---------- 报告 ----------
+  const MAJOR = ['中信证券', '中金公司', '华泰证券', '国泰海通', '招商证券', '申万宏源', '广发证券', '中信建投', '兴业证券', '国信证券', '光大证券', '东吴证券', '浙商证券', '长江证券', '天风证券', '方正证券', '开源证券', '财通证券', '民生证券', '平安证券', '国金证券', '东方证券', '华创证券', '中泰证券', '西部证券', '华西证券', '德邦证券', '国海证券', '中国银河', '粤开证券', '华安证券', '东北证券', '国联民生', '湘财证券'];
+  const isMajor = (n) => MAJOR.some((m) => n.indexOf(m) === 0 || n.indexOf(m.replace('证券', '')) === 0);
+  // 研报库较大，单独放在 research.js 里，页面先显示，研报加载完再补上
+  let ALLR = [];
+  const buildReports = () => {
+    ALLR = (window.MACRO_RESEARCH || []).concat((D.reports || []).map((r) => Object.assign({ type: r.team && r.team.indexOf('策略') >= 0 ? '策略' : '宏观', authors: '', pick: true }, r)))
+      .sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+  };
+  buildReports();
+  if (!window.MACRO_RESEARCH) {
+    const s = document.createElement('script'); s.src = 'research.js'; s.async = true;
+    s.onload = () => { buildReports(); render(); };
+    document.body.appendChild(s);
+  }
   function repCard(r, full){
     const c = el('article', 'card rep');
-    const top = el('div', 'top'); const who = el('span'); who.append(el('b', '', r.institution), el('span', 'cap', '　' + r.team + ' · ' + r.kind)); top.append(who, el('span', 'st ' + r.stance, r.stance)); c.appendChild(top);
-    c.appendChild(el('h3', '', r.title)); if (full) c.appendChild(el('p', '', r.summary));
-    const f = el('div', 'foot cap'); f.appendChild(el('span', 'num', r.date + (r.tags ? '　' + r.tags : ''))); f.appendChild(link(r.url, '原文 · ' + r.source_name)); c.appendChild(f);
+    const top = el('div', 'top'); const who = el('span', 'who');
+    who.append(el('b', '', r.institution)); if (r.authors) who.appendChild(el('span', 'cap', r.authors));
+    const tags = el('span', 'row'); tags.style.gap = '6px';
+    if (r.stance) tags.appendChild(el('span', 'st ' + r.stance, r.stance));
+    tags.appendChild(el('span', 'st type', r.type || '宏观'));
+    top.append(who, tags); c.appendChild(top);
+    c.appendChild(el('h3', '', r.title));
+    if (full && r.summary) { const p = el('p', 'sum', r.summary); p.title = '点击展开 / 收起'; p.addEventListener('click', () => p.classList.toggle('open')); c.appendChild(p); }
+    const f = el('div', 'foot cap'); f.appendChild(el('span', 'num', r.date));
+    const lk = el('span', 'lk');
+    lk.appendChild(link(r.url, r.pick ? '原文 · ' + r.source_name : r.url.indexOf('sina.com.cn') > 0 ? '研报原文 · 新浪财经' : '研报原文 · 东方财富'));
+    if (r.em_url) lk.appendChild(link(r.em_url, '东方财富'));
+    if (r.pdf) lk.appendChild(link(r.pdf, 'PDF'));
+    f.appendChild(lk); c.appendChild(f);
     return c;
   }
-  const R = { kind: '全部', stance: '全部', inst: '全部', q: '', from: '', to: '' };
-  segBind($('#kind'), (v) => { R.kind = v; renderReports(); });
-  segBind($('#stance'), (v) => { R.stance = v; renderReports(); });
-  $('#inst').addEventListener('change', (e) => { R.inst = e.target.value; renderReports(); });
-  $('#rq').addEventListener('input', (e) => { R.q = e.target.value.trim().toLowerCase(); renderReports(); });
-  $('#rfrom').addEventListener('change', (e) => { R.from = e.target.value; renderReports(); });
-  $('#rto').addEventListener('change', (e) => { R.to = e.target.value; renderReports(); });
-  const insts = [...new Set(D.reports.map((r) => r.institution))].sort((a, b) => a.localeCompare(b, 'zh'));
-  $('#inst').replaceChildren(new Option('全部机构', '全部'), ...insts.map((n) => new Option(n, n)));
+  const R = { type: '全部', scope: 'major', inst: '全部', q: '', from: '', to: '', n: 30 };
+  segBind($('#rtype'), (v) => { R.type = v; R.n = 30; renderReports(); });
+  segBind($('#rscope'), (v) => { R.scope = v; R.inst = '全部'; R.n = 30; renderReports(); });
+  $('#inst').addEventListener('change', (e) => { R.inst = e.target.value; R.n = 30; renderReports(); });
+  $('#rq').addEventListener('input', (e) => { R.q = e.target.value.trim().toLowerCase(); R.n = 30; renderReports(); });
+  $('#rfrom').addEventListener('change', (e) => { R.from = e.target.value; R.n = 30; renderReports(); });
+  $('#rto').addEventListener('change', (e) => { R.to = e.target.value; R.n = 30; renderReports(); });
+  $('#rmore').addEventListener('click', () => { R.n += 30; renderReports(); });
   function renderReports(){
-    const rows = D.reports.filter((r) => (R.kind === '全部' || r.kind === R.kind) && (R.stance === '全部' || r.stance === R.stance) && (R.inst === '全部' || r.institution === R.inst) && (!R.from || r.date >= R.from) && (!R.to || r.date <= R.to) && (!R.q || [r.institution, r.title, r.summary, r.tags, r.team].join(' ').toLowerCase().includes(R.q))).sort((a, b) => a.date < b.date ? 1 : -1);
-    $('#rcount').textContent = '共 ' + rows.length + ' 条';
-    $('#reps').replaceChildren(...(rows.length ? rows.map((r) => repCard(r, true)) : [el('div', 'empty', '没有符合条件的报告')]));
+    const pool = ALLR.filter((r) => R.scope === 'all' || r.pick || isMajor(r.institution));
+    const names = [...new Set(pool.map((r) => r.institution))].sort((a, b) => a.localeCompare(b, 'zh'));
+    const sel = $('#inst'); sel.replaceChildren(new Option('全部机构（' + names.length + '）', '全部'), ...names.map((n) => new Option(n, n)));
+    if (!names.includes(R.inst)) R.inst = '全部'; sel.value = R.inst;
+    const rows = pool.filter((r) => (R.type === '全部' || r.type === R.type) && (R.inst === '全部' || r.institution === R.inst) && (!R.from || r.date >= R.from) && (!R.to || r.date <= R.to) && (!R.q || [r.institution, r.title, r.summary, r.authors].join(' ').toLowerCase().includes(R.q)));
+    $('#rcount').textContent = !window.MACRO_RESEARCH ? '研报加载中…' : '共 ' + rows.length + ' 篇' + (rows.length ? '，最新 ' + rows[0].date : '');
+    $('#reps').replaceChildren(...(rows.length ? rows.slice(0, R.n).map((r) => repCard(r, true)) : [el('div', 'empty', '没有符合条件的报告')]));
+    $('#rmore').hidden = rows.length <= R.n;
   }
 
   // ---------- 事件 ----------

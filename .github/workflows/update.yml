@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.js 宏观策略看板_单文件版.html
+          git add data.js research.js content/research_index.json 宏观策略看板_单文件版.html
           if git diff --cached --quiet; then
             echo "数据没有变化"
           else
@@ -57,7 +57,7 @@ jobs:
       - name: 整理网站文件
         run: |
           mkdir -p _site
-          cp index.html data.js 宏观策略看板_单文件版.html _site/
+          cp index.html data.js research.js 宏观策略看板_单文件版.html _site/
 
       - uses: actions/upload-pages-artifact@v3
         with:

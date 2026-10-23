@@ -14,7 +14,7 @@
     python3 update_data.py --build    # 只改了观点 / 事件 / 网页时，不联网直接重新打包
 运行后把整个文件夹重新上传到网站即可。
 """
-import csv, hashlib, html, io, json, os, re, sys, time, urllib.request
+import csv, hashlib, html, io, json, os, re, sys, time, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -35,7 +35,8 @@ STATUS = {}   # 各来源本次抓取情况：{来源: {'ok': n, 'fail': n}}
 
 
 def _source(url):
-    return '国家统计局' if 'stats.gov.cn' in url else '中国人民银行' if 'pbc.gov.cn' in url else 'OECD' if 'oecd.org' in url else '其他'
+    return ('国家统计局' if 'stats.gov.cn' in url else '中国人民银行' if 'pbc.gov.cn' in url else 'OECD' if 'oecd.org' in url
+            else '东方财富研报' if 'eastmoney.com' in url else '新浪研报' if 'sina.com.cn' in url else '其他')
 
 
 def _mark(url, ok):
@@ -47,7 +48,7 @@ def fetch(url, cache=True, timeout=30):
     key = os.path.join(CACHE, hashlib.md5(url.encode()).hexdigest() + '.html')
     if cache and os.path.exists(key):
         return open(key, encoding='utf-8').read()
-    opener = _direct if '.gov.cn' in url else _proxied
+    opener = _direct if ('.gov.cn' in url or 'eastmoney.com' in url) else _proxied
     for attempt in range(3):
         try:
             req = urllib.request.Request(url, headers={'User-Agent': UA, 'Accept-Language': 'zh-CN,zh;q=0.9'})
@@ -329,6 +330,157 @@ def oecd():
     return True
 
 
+# ---------------------------------------------------------------- 券商研报
+# 主来源：新浪财经研报中心（覆盖招商、申万、光大、浙商及外资投行等，报告页写明机构、研究员与核心观点）
+# 补充：东方财富研报中心（附 PDF 原文）。收录记录保存在 content/research_index.json，随仓库累积。
+SINA_LIST = 'https://stock.finance.sina.com.cn/stock/go.php/vReport_List/kind/{k}/index.phtml?p={p}'
+SINA_KIND = {'macro': '宏观', 'strategy': '策略'}
+EM_API = ('https://reportapi.eastmoney.com/report/jg?pageSize=100&beginTime={b}&endTime={e}&pageNo={p}'
+          '&fields=&qType={q}&orgCode=&author=&p={p}&pageNum={p}&pageNumber={p}')
+EM_PAGE = {3: 'https://data.eastmoney.com/report/zw_macresearch.jshtml?encodeUrl=', 2: 'https://data.eastmoney.com/report/zw_strategy.jshtml?encodeUrl='}
+EM_TYPE = {3: '宏观', 2: '策略'}
+FOREIGN = {'摩根士丹利': '摩根士丹利', '高盛': '高盛', '摩根大通': '摩根大通', '瑞银': '瑞银', '花旗': '花旗', '美银': '美银', '野村': '野村',
+           '汇丰': '汇丰', '德意志银行': '德意志银行', '巴克莱': '巴克莱', '星展': '星展', '大华继显': '大华继显'}
+SKIP_TITLE = ('日报', '晨报', '早报', '晚报', '每日', '晨会', '早参', '午评', '收评', '资讯', '鑫新闻', '新股纵览')
+REPORT_DAYS = 365
+
+
+def org_short(name):
+    name = name.strip()
+    for k, v in FOREIGN.items():
+        if name.startswith(k):
+            return v
+    if name.startswith('上海申银万国证券研究所'):
+        return '申万宏源'
+    for suf in ('股份有限公司', '有限责任公司', '有限公司', '(香港)', '（香港）'):
+        name = name.replace(suf, '')
+    return name
+
+
+def keep_report(org, title):
+    if any(k in title for k in SKIP_TITLE):
+        return False
+    return ('证券' in org or org.startswith('中金') or org in FOREIGN.values() or org == '申万宏源') and '期货' not in org
+
+
+def _decode(raw):
+    for enc in ('gbk', 'utf-8'):
+        try:
+            return raw.decode(enc)
+        except Exception:
+            pass
+    return raw.decode('utf-8', 'ignore')
+
+
+def sina_page(url):
+    key = os.path.join(CACHE, hashlib.md5(url.encode()).hexdigest() + '.html')
+    if os.path.exists(key):
+        return open(key, encoding='utf-8').read()
+    for attempt in range(3):
+        try:
+            raw = _direct.open(urllib.request.Request(url, headers={'User-Agent': UA}), timeout=30).read()
+            text = _decode(raw)
+            _mark(url, True)
+            if 'vReport_Show' in url and len(text) > 3000:
+                open(key, 'w', encoding='utf-8').write(text)
+            time.sleep(0.2)
+            return text
+        except Exception:
+            time.sleep(2 * (attempt + 1))
+    _mark(url, False)
+    return ''
+
+
+def _source_extra(url):
+    return '新浪研报' if 'sina.com.cn' in url else None
+
+
+def reports():
+    from datetime import timedelta
+    path = os.path.join(CONTENT, 'research_index.json')
+    have = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else {}
+    today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
+    cutoff = str(today - timedelta(days=REPORT_DAYS))
+    stop = str(today - timedelta(days=10)) if have and not FULL else cutoff
+    # 新浪：逐页往前翻，翻到已收录日期之前为止
+    for kind, label in SINA_KIND.items():
+        for page in range(1, 60):
+            t = sina_page(SINA_LIST.format(k=kind, p=page))
+            rows = re.findall(r'<tr>(.*?)</tr>', t, re.S)
+            got = 0; oldest = '9999'
+            for r in rows:
+                a = re.search(r'title="([^"]+)"\s+href="([^"]*vReport_Show[^"]*)"', r)
+                d = re.search(r'<td>(\d{4}-\d{2}-\d{2})</td>', r)
+                o = re.search(r'fname05"><span>(.*?)</span>', r)
+                if not (a and d and o):
+                    continue
+                got += 1; oldest = min(oldest, d.group(1))
+                title, url = html.unescape(a.group(1)).strip(), 'https:' + a.group(2) if a.group(2).startswith('//') else a.group(2)
+                org = org_short(html.unescape(o.group(1)))
+                au = re.search(r'class="fname"><span>(.*?)</span>', r)
+                if not keep_report(org, title):
+                    continue
+                rid = 's' + re.search(r'rptid/(\d+)', url).group(1)
+                have.setdefault(rid, dict(date=d.group(1), institution=org, type=label, title=title,
+                                          authors=(au.group(1) if au else '').replace('/', '、'), url=url, pdf=''))
+            if not got or oldest < stop:
+                break
+    # 东方财富：补充新浪未收录的报告，并给同名报告补上 PDF
+    seen = {(v['institution'], v['title']): k for k, v in have.items()}
+    for q in (3, 2):
+        for page in range(1, 40):
+            text = fetch(EM_API.format(b=stop, e=today, p=page, q=q), cache=False)
+            try:
+                rows = json.loads(text).get('data') or []
+            except Exception:
+                rows = []
+            if not rows:
+                break
+            for r in rows:
+                org, title, code = org_short(r.get('orgSName') or ''), (r.get('title') or '').strip(), r.get('encodeUrl')
+                if not code or not keep_report(org, title):
+                    continue
+                url = EM_PAGE[q] + urllib.parse.quote(code, safe='')
+                if (org, title) in seen:
+                    have[seen[(org, title)]].setdefault('em_url', url)
+                    continue
+                rid = 'e' + hashlib.md5(code.encode()).hexdigest()[:12]
+                have.setdefault(rid, dict(date=(r.get('publishDate') or '')[:10], institution=org, type=EM_TYPE[q], title=title,
+                                          authors=(r.get('researcher') or '').replace(',', '、'), url=url, pdf=''))
+                seen[(org, title)] = rid
+    em_cut = str(today - timedelta(days=120))       # 东方财富以中小券商为主，只保留近 120 天
+    have = {k: v for k, v in have.items() if v['date'] >= (cutoff if k.startswith('s') else em_cut)}
+    for v in have.values():                          # 旧版本误取到网页样式文字的摘要，重新读取
+        if v.get('summary', '').startswith('blk_container'):
+            v.pop('summary')
+    # 读取新收录报告的正文摘要
+    todo = [v for v in have.values() if 'summary' not in v]
+    print('  新收录研报 %d 篇' % len(todo), flush=True)
+    def detail(v):
+        if 'sina.com.cn' in v['url']:
+            t = sina_page(v['url'])
+            i = t.find('class="blk_container"')
+            j = t.find('</div>', i) if i > 0 else -1
+            body = html.unescape(re.sub(r'<[^>]+>', ' ', t[t.find('>', i) + 1:j])) if i > 0 else ''
+            body = re.sub(r'\s+', ' ', body).strip()
+            v['summary'] = body[:200] + ('…' if len(body) > 200 else '')
+        else:
+            t = fetch(v['url'])
+            m = re.search(r'"notice_content":"(.*?)","', t, re.S)
+            s = json.loads('"' + m.group(1) + '"') if m else ''
+            s = re.sub(r'\s+', ' ', s).strip()
+            v['summary'] = s[:200] + ('…' if len(s) > 200 else '')
+            p = re.search(r'"attach_url":"(https?://pdf\.dfcfw\.com/[^"]+)"', t)
+            v['pdf'] = p.group(1) if p else ''
+    with ThreadPoolExecutor(8) as ex:
+        list(ex.map(detail, todo))
+    json.dump(have, open(path, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+    out = [dict(rid=k, **v) for k, v in have.items()]
+    out.sort(key=lambda x: (x['date'], x['rid']), reverse=True)
+    print('  研报库共 %d 篇' % len(out))
+    return out
+
+
 # ---------------------------------------------------------------- 指标目录
 NBS_DB = 'https://data.stats.gov.cn/easyquery.htm?cn=A01'
 NBS_REL = 'https://www.stats.gov.cn/sj/zxfb/'
@@ -408,7 +560,9 @@ def build_single():
     # 单文件版：把数据内嵌进网页，方便直接发微信 / 邮件
     page = open(os.path.join(ROOT, 'index.html'), encoding='utf-8').read()
     data_js = open(os.path.join(ROOT, 'data.js'), encoding='utf-8').read()
-    inline = page.replace('<script src="data.js"></script>', '<script>' + data_js + '</script>')
+    rpath = os.path.join(ROOT, 'research.js')
+    research_js = open(rpath, encoding='utf-8').read() if os.path.exists(rpath) else ''
+    inline = page.replace('<script src="data.js"></script>', '<script>' + data_js + '</script><script>' + research_js + '</script>')
     open(os.path.join(ROOT, '宏观策略看板_单文件版.html'), 'w', encoding='utf-8').write(inline)
 
 
@@ -428,8 +582,10 @@ def main():
         prev['events'] = json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8'))
         have = {c['sid'] for c in prev['catalog']}
         OECD_LINKS.update({c['sid']: (c['api_url'], c['oecd_url']) for c in prev['catalog'] if c.get('api_url')})
-        build_catalog(); fix_links()
+        build_catalog()
         prev['catalog'] = [c for c in C if c['sid'] in have]
+        if 'research' in prev:
+            open(os.path.join(ROOT, 'research.js'), 'w', encoding='utf-8').write('window.MACRO_RESEARCH = ' + json.dumps(prev.pop('research'), ensure_ascii=False) + ';\n')
         open(os.path.join(ROOT, 'data.js'), 'w', encoding='utf-8').write('window.MACRO_DATA = ' + json.dumps(prev, ensure_ascii=False) + ';\n')
         build_single()
         print('已重新打包（未联网更新数据）')
@@ -444,6 +600,17 @@ def main():
     print('· 国家统计局', flush=True); parse_nbs(nbs_list())
     print('· 人民银行', flush=True); pbc()
     print('· OECD', flush=True); ok = oecd()
+    print('· 券商研报', flush=True)
+    try:
+        auto = reports()
+    except Exception as e:
+        print('  ! 研报抓取失败，沿用上次：', e)
+        auto = []
+    if not auto:
+        try:
+            auto = json.loads(open(os.path.join(ROOT, 'research.js'), encoding='utf-8').read().split('=', 1)[1].rstrip().rstrip(';'))
+        except Exception:
+            auto = []
     if not ok and prev:
         for o in prev.get('observations', []):
             if o['sid'] in OECD_SERIES:
@@ -463,7 +630,6 @@ def main():
         if (sid, date) not in OBS:
             put(sid, date, value, src)
     build_catalog()
-    fix_links()
     obs = sorted((o for o in OBS.values() if o['date'] >= '2015-01'), key=lambda o: (o['sid'], o['date']))
     have = {o['sid'] for o in obs}
     catalog = [c for c in C if c['sid'] in have]
@@ -472,9 +638,12 @@ def main():
         sources=STATUS,
         catalog=catalog, observations=obs,
         reports=json.load(open(os.path.join(CONTENT, 'reports.json'), encoding='utf-8')),
+        research=auto,
         events=json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8')),
     )
+    research = data.pop('research')
     open(prev_path, 'w', encoding='utf-8').write('window.MACRO_DATA = ' + json.dumps(data, ensure_ascii=False) + ';\n')
+    open(os.path.join(ROOT, 'research.js'), 'w', encoding='utf-8').write('window.MACRO_RESEARCH = ' + json.dumps(research, ensure_ascii=False) + ';\n')
     build_single()
     for k, v in STATUS.items():
         print('  来源 %-8s 成功 %d 次，失败 %d 次' % (k, v['ok'], v['fail']))
