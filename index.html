@@ -602,7 +602,8 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
       head.forEach((h, i) => hr.appendChild(el('th', i === 2 ? 'l' : '', h)));
       (OBS.get(c.sid) || []).filter((o) => inR(o.date)).slice().reverse().forEach((o) => {
         const tr = el('tr'); tr.append(el('td', 'num', o.date), el('td', 'num', fmt(o.value, c)));
-        const td = el('td', 'l'); td.appendChild(o.src ? link(o.src, '官方发布稿') : link(c.api_url || c.db_url, c.api_url ? 'OECD 数据接口' : c.db_name)); tr.appendChild(td); bd.appendChild(tr);
+        const srcName = !o.src ? (c.api_url ? 'OECD 数据库' : c.db_name) : o.src.indexOf('data.stats.gov.cn') > 0 ? '统计局国家数据库' : o.src.indexOf('pbc.gov.cn') > 0 ? '人民银行发布稿' : o.src.indexOf('stats.gov.cn') > 0 ? '统计局发布稿' : '官方发布';
+        const td = el('td', 'l'); td.appendChild(link(o.src || c.api_url || c.db_url, srcName)); tr.appendChild(td); bd.appendChild(tr);
         rows.push([o.date, o.value, o.src || c.api_url || c.db_url]);
       });
       TABLE = { head, rows, name: c.name };

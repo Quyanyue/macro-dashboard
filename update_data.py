@@ -206,6 +206,100 @@ def parse_nbs(items):
             if m: put('cn_ur', per, float(m.group(2)), url)
 
 
+# ---------------------------------------------------------------- 国家统计局「国家数据」新平台接口
+NBS_API = 'https://data.stats.gov.cn/dg/website/publicrelease/web/external'
+NBS_MONTH_ROOT = 'fc982599aa684be7969d7b90b1bd0e84'      # 月度数据
+_n = lambda s: re.sub(r'\s+', '', s or '')
+# sid: (目录路径, 末级目录名前缀（多个时期分表时会匹配多张）, 指标名, 是否减 100（指数→同比%）, 是否覆盖其他来源)
+NBS_SERIES = {
+    'cn_cpi': (['价格指数', '居民消费价格分类指数(上年同月=100)'], '全国居民消费价格分类指数(上年同月=100)', '居民消费价格指数(上年同月=100)', True, False),
+    'cn_core_cpi': (['价格指数', '居民消费价格分类指数(上年同月=100)'], '全国居民消费价格分类指数(上年同月=100)', '不包括食品和能源居民消费价格指数(上年同月=100)', True, False),
+    'cn_ppi': (['价格指数', '工业生产者出厂价格分类指数'], '工业生产者出厂价格指数(上年同月=100)', '工业生产者出厂价格指数(上年同月=100)', True, False),
+    'cn_ppirm': (['价格指数', '工业生产者购进价格指数'], '工业生产者购进价格指数(上年同月=100)', '工业生产者购进价格指数(上年同月=100)', True, False),
+    'cn_ip': (['工业'], '规上工业增加值增长速度', '规上工业增加值同比增长(%)', False, False),
+    'cn_ur': (['城镇调查失业率'], '城镇调查失业率', '全国城镇调查失业率(%)', False, False),
+    'cn_re_inv': (['房地产'], '房地产开发投资情况', '房地产投资_累计增长(%)', False, False),
+    'cn_re_sales': (['房地产'], '新建商品房销售面积', '新建商品房销售面积累计增长(%)', False, False),
+    'cn_retail': (['国内贸易'], '社会消费品零售总额', '社会消费品零售总额同比增长(%)', False, False),
+    'cn_retail_ytd': (['国内贸易'], '社会消费品零售总额', '社会消费品零售总额累计增长(%)', False, False),
+    'cn_exp': (['对外经济'], '货物进出口总额', '出口总值同比增长(%)', False, True),
+    'cn_imp': (['对外经济'], '货物进出口总额', '进口总值同比增长(%)', False, True),
+    'cn_pmi': (['采购经理指数'], '制造业采购经理指数', '制造业采购经理指数(%)', False, False),
+    'cn_pmi_no': (['采购经理指数'], '制造业采购经理指数', '新订单指数(%)', False, False),
+    'cn_npmi': (['采购经理指数'], '非制造业采购经理指数', '非制造业商务活动指数(%)', False, False),
+    'cn_cpmi': (['采购经理指数'], '综合PMI产出指数', '综合PMI产出指数(%)', False, False),
+    'cn_m2': (['金融'], '货币供应量', '货币和准货币(M2)供应量_同比增长(%)', False, False),
+    'cn_m1': (['金融'], '货币供应量', '货币(M1)供应量_同比增长(%)', False, False),
+}
+NBS_DB_MONTH = 'https://data.stats.gov.cn/dg/website/page.html#/pc/national/monthData'
+NBS_DB_QUARTER = 'https://data.stats.gov.cn/dg/website/page.html#/pc/national/quarterData'
+
+
+def nbs_call(path, body=None):
+    url = NBS_API + path
+    for attempt in range(4):
+        try:
+            h = {'User-Agent': UA, 'Referer': 'https://data.stats.gov.cn/dg/website/page.html'}
+            if body is not None:
+                h['Content-Type'] = 'application/json'
+            raw = _direct.open(urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=h), timeout=60).read()
+            _mark('https://data.stats.gov.cn/', True)
+            time.sleep(0.8)                         # 放慢节奏，避免被服务器限流
+            return json.loads(raw.decode('utf-8'))
+        except Exception:
+            time.sleep(5 * (attempt + 1))
+    _mark('https://data.stats.gov.cn/', False)
+    return None
+
+
+def nbs_db():
+    """从统计局数据库补齐国内月度指标的长期历史（发布稿已有的月份保留发布稿出处）"""
+    kids = {}
+    def children(pid):
+        if pid not in kids:
+            d = nbs_call('/new/queryIndexTreeAsync?pid=%s&code=1' % pid)
+            kids[pid] = (d or {}).get('data') or []
+        return kids[pid]
+    inds = {}
+    year = datetime.now(ZoneInfo('Asia/Shanghai')).year
+    got = 0
+    for sid, (path, leaf_prefix, ind_name, minus100, override) in NBS_SERIES.items():
+        node = NBS_MONTH_ROOT
+        for name in path:
+            hit = [k for k in children(node) if _n(k['name']) == _n(name)]
+            if not hit:
+                node = None
+                break
+            node = hit[0]['_id']
+        if not node:
+            print('  ! 统计局数据库找不到目录', sid, path)
+            continue
+        leaves = [k for k in children(node) if k.get('isLeaf') and _n(k['name']).startswith(_n(leaf_prefix))]
+        for leaf in leaves:
+            if leaf['_id'] not in inds:
+                d = nbs_call('/new/queryIndicatorsByCid?cid=%s&dt=&name=' % leaf['_id'])
+                inds[leaf['_id']] = ((d or {}).get('data') or {}).get('list') or []
+            ids = [i['_id'] for i in inds[leaf['_id']] if _n(i.get('i_showname')) == _n(ind_name)]
+            if not ids:
+                continue
+            d = nbs_call('/stream/esData', {'cid': leaf['_id'], 'indicatorIds': ids, 'daCatalogId': '', 'showType': 1,
+                                            'das': [{'text': '全国', 'value': '000000000000'}],
+                                            'dts': ['200001MM-%d12MM' % year], 'rootId': NBS_MONTH_ROOT})
+            for row in (d or {}).get('data') or []:
+                code = row.get('code', '')
+                if not re.match(r'^\d{6}MM$', code):
+                    continue
+                date = code[:4] + '-' + code[4:6]
+                for v in row.get('values') or []:
+                    if v.get('_id') in ids and v.get('value') not in (None, ''):
+                        val = float(v['value']) - (100 if minus100 else 0)
+                        old = OBS.get((sid, date))
+                        if override or not old or not old['src']:      # 发布稿优先；OECD 补的点由统计局数据替换
+                            put(sid, date, round(val, 2), NBS_DB_MONTH)
+                            got += 1
+    print('  统计局数据库补充 %d 个数据点' % got)
+
+
 # ---------------------------------------------------------------- 人民银行
 def pbc_period(title):
     """报告标题 → 期末月份：'2026年8月' → 08，'一季度' → 03，'上半年' → 06，'前三季度' → 09，'2025年金融统计…' → 12"""
@@ -482,7 +576,7 @@ def reports():
 
 
 # ---------------------------------------------------------------- 指标目录
-NBS_DB = 'https://data.stats.gov.cn/easyquery.htm?cn=A01'
+NBS_DB = 'https://data.stats.gov.cn/dg/website/page.html#/pc/national/monthData'
 NBS_REL = 'https://www.stats.gov.cn/sj/zxfb/'
 PBC_DB = 'https://www.pbc.gov.cn/diaochatongjisi/116219/116319/index.html'
 PBC_REL = 'https://www.pbc.gov.cn/diaochatongjisi/116219/116225/index.html'
@@ -497,30 +591,30 @@ def cat(sid, region, country, category, name, unit, freq, origin, db_name, db_ur
 
 def build_catalog():
     S = '国家统计局'; P = '中国人民银行'
-    cat('cn_gdp', '国内', '中国', '增长', 'GDP 不变价当季同比', '%', '季', S, '国家数据 · 季度', 'https://data.stats.gov.cn/easyquery.htm?cn=B01', NBS_REL, '季度值记在季末月；OECD 按官方数据整理')
-    cat('cn_ip', '国内', '中国', '增长', '规上工业增加值 当月同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL, '1—2 月为合并值，记在 2 月')
-    cat('cn_retail', '国内', '中国', '增长', '社零总额 当月同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL, '名义增速')
-    cat('cn_retail_ytd', '国内', '中国', '增长', '社零总额 累计同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL, '名义增速')
-    cat('cn_fai', '国内', '中国', '增长', '固定资产投资 累计同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL, '不含农户，按可比口径')
-    cat('cn_fai_mfg', '国内', '中国', '增长', '制造业投资 累计同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_fai_infra', '国内', '中国', '增长', '基础设施投资 累计同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_re_inv', '国内', '中国', '地产', '房地产开发投资 累计同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_re_sales', '国内', '中国', '地产', '新建商品房销售面积 累计同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_profit', '国内', '中国', '增长', '规上工业企业利润 累计同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_ur', '国内', '中国', '就业', '城镇调查失业率', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_cpi', '国内', '中国', '价格', 'CPI 同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL, '2021 年 11 月起取自统计局发布稿，此前取自 OECD 数据库')
-    cat('cn_core_cpi', '国内', '中国', '价格', '核心 CPI 同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL, '扣除食品和能源')
-    cat('cn_cpi_mom', '国内', '中国', '价格', 'CPI 环比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_ppi', '国内', '中国', '价格', 'PPI 同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_ppirm', '国内', '中国', '价格', 'PPIRM 购进价格同比', '%', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_pmi', '国内', '中国', '景气', '制造业 PMI', '', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL, '50 为荣枯线')
-    cat('cn_pmi_no', '国内', '中国', '景气', 'PMI 新订单指数', '', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_npmi', '国内', '中国', '景气', '非制造业商务活动指数', '', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_cpmi', '国内', '中国', '景气', '综合 PMI 产出指数', '', '月', S, '国家数据 · 月度', NBS_DB, NBS_REL)
-    cat('cn_exp', '国内', '中国', '外贸', '出口金额同比（美元）', '%', '月', '海关总署', '海关统计数据在线查询', 'http://stats.customs.gov.cn/', 'http://www.customs.gov.cn/customs/302249/zfxxgk/2799825/302274/302275/index.html', 'OECD 按出口金额计算，与海关公布值可能有 0.1—0.3 个百分点差异')
-    cat('cn_imp', '国内', '中国', '外贸', '进口金额同比（美元）', '%', '月', '海关总署', '海关统计数据在线查询', 'http://stats.customs.gov.cn/', '', 'OECD 按进口金额计算')
-    cat('cn_m2', '国内', '中国', '金融', 'M2 同比', '%', '月', P, '人民银行 · 统计数据', PBC_DB, PBC_REL)
-    cat('cn_m1', '国内', '中国', '金融', 'M1 同比', '%', '月', P, '人民银行 · 统计数据', PBC_DB, PBC_REL, '2025 年起 M1 口径扩充')
+    cat('cn_gdp', '国内', '中国', '增长', 'GDP 不变价当季同比', '%', '季', S, '国家数据 · 季度数据', 'https://data.stats.gov.cn/dg/website/page.html#/pc/national/quarterData', NBS_REL, '季度值记在季末月；OECD 按官方数据整理')
+    cat('cn_ip', '国内', '中国', '增长', '规上工业增加值 当月同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL, '1—2 月为合并值，记在 2 月')
+    cat('cn_retail', '国内', '中国', '增长', '社零总额 当月同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL, '名义增速')
+    cat('cn_retail_ytd', '国内', '中国', '增长', '社零总额 累计同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL, '名义增速')
+    cat('cn_fai', '国内', '中国', '增长', '固定资产投资 累计同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL, '不含农户，按可比口径')
+    cat('cn_fai_mfg', '国内', '中国', '增长', '制造业投资 累计同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_fai_infra', '国内', '中国', '增长', '基础设施投资 累计同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_re_inv', '国内', '中国', '地产', '房地产开发投资 累计同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_re_sales', '国内', '中国', '地产', '新建商品房销售面积 累计同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_profit', '国内', '中国', '增长', '规上工业企业利润 累计同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_ur', '国内', '中国', '就业', '城镇调查失业率', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_cpi', '国内', '中国', '价格', 'CPI 同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL, '近年数据附统计局发布稿出处，更早月份取自统计局国家数据库')
+    cat('cn_core_cpi', '国内', '中国', '价格', '核心 CPI 同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL, '扣除食品和能源')
+    cat('cn_cpi_mom', '国内', '中国', '价格', 'CPI 环比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_ppi', '国内', '中国', '价格', 'PPI 同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_ppirm', '国内', '中国', '价格', 'PPIRM 购进价格同比', '%', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_pmi', '国内', '中国', '景气', '制造业 PMI', '', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL, '50 为荣枯线')
+    cat('cn_pmi_no', '国内', '中国', '景气', 'PMI 新订单指数', '', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_npmi', '国内', '中国', '景气', '非制造业商务活动指数', '', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_cpmi', '国内', '中国', '景气', '综合 PMI 产出指数', '', '月', S, '国家数据 · 月度数据', NBS_DB, NBS_REL)
+    cat('cn_exp', '国内', '中国', '外贸', '出口金额同比（美元）', '%', '月', '海关总署', '国家数据 · 月度数据', NBS_DB, 'http://stats.customs.gov.cn/', '海关总署数据，取自统计局数据库；数据库暂缺的月份用 OECD 补齐')
+    cat('cn_imp', '国内', '中国', '外贸', '进口金额同比（美元）', '%', '月', '海关总署', '国家数据 · 月度数据', NBS_DB, 'http://stats.customs.gov.cn/', '海关总署数据，取自统计局数据库；数据库暂缺的月份用 OECD 补齐')
+    cat('cn_m2', '国内', '中国', '金融', 'M2 同比', '%', '月', P, '人民银行 · 统计数据', PBC_DB, NBS_DB)
+    cat('cn_m1', '国内', '中国', '金融', 'M1 同比', '%', '月', P, '人民银行 · 统计数据', PBC_DB, NBS_DB, '2025 年起 M1 口径扩充')
     cat('cn_tsf', '国内', '中国', '金融', '社融存量 同比', '%', '月', P, '人民银行 · 统计数据', PBC_DB, PBC_REL)
     cat('cn_loan', '国内', '中国', '金融', '人民币贷款余额 同比', '%', '月', P, '人民银行 · 统计数据', PBC_DB, PBC_REL)
     cat('cn_10y', '国内', '中国', '利率汇率', '10 年期国债收益率（月均）', '%', '月', '中央结算公司', '中国债券信息网 · 收益率曲线', 'https://yield.chinabond.com.cn/')
@@ -600,6 +694,11 @@ def main():
     print('· 国家统计局', flush=True); parse_nbs(nbs_list())
     print('· 人民银行', flush=True); pbc()
     print('· OECD', flush=True); ok = oecd()
+    print('· 统计局数据库', flush=True)
+    try:
+        nbs_db()
+    except Exception as e:
+        print('  ! 统计局数据库读取失败：', e)
     print('· 券商研报', flush=True)
     try:
         auto = reports()
@@ -630,7 +729,7 @@ def main():
         if (sid, date) not in OBS:
             put(sid, date, value, src)
     build_catalog()
-    obs = sorted((o for o in OBS.values() if o['date'] >= '2015-01'), key=lambda o: (o['sid'], o['date']))
+    obs = sorted((o for o in OBS.values() if o['date'] >= '2010-01'), key=lambda o: (o['sid'], o['date']))
     have = {o['sid'] for o in obs}
     catalog = [c for c in C if c['sid'] in have]
     data = dict(
