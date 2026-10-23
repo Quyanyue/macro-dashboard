@@ -221,7 +221,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
   <section data-page="data" class="stack" hidden>
     <div class="between">
       <h1>宏观数据查询</h1>
-      <span class="cap">勾选多个指标即可批量查询；每张图下方链接直达官方数据库和发布稿</span>
+      <span class="cap">勾选多个指标即可批量查询；每张图下方链接直达官方数据库，表格里每一期都附官方发布稿</span>
     </div>
     <div class="card range">
       <div class="seg" id="region">
@@ -290,7 +290,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
       <input class="in" id="rq" type="search" placeholder="关键词，如 加息、红利" aria-label="搜索报告">
       <span class="cap">日期</span><input class="in num" id="rfrom" type="date" aria-label="起始日期"><span class="cap">至</span><input class="in num" id="rto" type="date" aria-label="结束日期">
     </div>
-    <p class="cap" id="rcount"></p>
+    <p class="cap"><span id="rcount"></span>　链接打不开？在海外开着 VPN 时，请把 VPN 切换为「规则 / 智能分流」模式，国内网站需直连才能打开。</p>
     <div class="reps" id="reps"></div>
   </section>
 
@@ -312,6 +312,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
   <footer>
     数据来源：国家统计局「最新发布」、中国人民银行「金融统计数据报告」逐篇抓取；海外与部分国内序列来自 OECD 关键经济指标库官方接口。每个数据点在表格中都附出处链接。
     OECD 序列按指数计算，与各国公布值可能有小数位差异。观点摘要仅供内部研究参考，以原报告为准。<br>
+    国内政府与财经网站需直连访问：在海外使用 VPN 时请切换为规则模式；国家统计局「国家数据库查询」仅对中国境内网络开放。<br>
     网站每天自动抓取最新数据。需要离线查看可下载 <a href="宏观策略看板_单文件版.html" download>单文件版</a>，用浏览器直接打开即可。
   </footer>
 </main>
@@ -552,6 +553,7 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
     const r = el('div', 'links');
     r.appendChild(link(c.db_url, c.db_name));
     if (c.rel_url) r.appendChild(link(c.rel_url, '官方发布栏目'));
+    if (c.alt_url) r.appendChild(link(c.alt_url, c.alt_name));
     if (c.oecd_url) r.appendChild(link(c.oecd_url, 'OECD 数据库'));
     if (c.api_url) r.appendChild(link(c.api_url, '数据接口'));
     return r;

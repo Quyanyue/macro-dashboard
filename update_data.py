@@ -412,11 +412,24 @@ def build_single():
     open(os.path.join(ROOT, '宏观策略看板_单文件版.html'), 'w', encoding='utf-8').write(inline)
 
 
+def fix_links():
+    # data.stats.gov.cn 只对中国境内网络开放：主链接改用全球可访问的统计局发布栏目，数据库查询页作为备用
+    for c in C:
+        if c['db_url'].startswith('https://data.stats.gov.cn'):
+            c['alt_url'], c['alt_name'] = c['db_url'], '国家数据库查询（仅限境内网络）'
+            c['db_url'], c['db_name'] = NBS_REL, '国家统计局 · 最新发布'
+            c['rel_url'] = ''
+
+
 def main():
     if '--build' in sys.argv:              # 只改了网页或观点/事件时：不联网，直接重新打包
         prev = json.loads(open(os.path.join(ROOT, 'data.js'), encoding='utf-8').read().split('=', 1)[1].rstrip().rstrip(';'))
         prev['reports'] = json.load(open(os.path.join(CONTENT, 'reports.json'), encoding='utf-8'))
         prev['events'] = json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8'))
+        have = {c['sid'] for c in prev['catalog']}
+        OECD_LINKS.update({c['sid']: (c['api_url'], c['oecd_url']) for c in prev['catalog'] if c.get('api_url')})
+        build_catalog(); fix_links()
+        prev['catalog'] = [c for c in C if c['sid'] in have]
         open(os.path.join(ROOT, 'data.js'), 'w', encoding='utf-8').write('window.MACRO_DATA = ' + json.dumps(prev, ensure_ascii=False) + ';\n')
         build_single()
         print('已重新打包（未联网更新数据）')
@@ -450,6 +463,7 @@ def main():
         if (sid, date) not in OBS:
             put(sid, date, value, src)
     build_catalog()
+    fix_links()
     obs = sorted((o for o in OBS.values() if o['date'] >= '2015-01'), key=lambda o: (o['sid'], o['date']))
     have = {o['sid'] for o in obs}
     catalog = [c for c in C if c['sid'] in have]
