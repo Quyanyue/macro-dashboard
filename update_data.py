@@ -17,6 +17,7 @@
 import csv, hashlib, html, io, json, os, re, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(ROOT, 'cache')
@@ -28,6 +29,18 @@ os.makedirs(CACHE, exist_ok=True)
 # 国内政府网站直连，境外接口走系统代理（如有）
 _direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor())
 _proxied = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
+
+
+STATUS = {}   # 各来源本次抓取情况：{来源: {'ok': n, 'fail': n}}
+
+
+def _source(url):
+    return '国家统计局' if 'stats.gov.cn' in url else '中国人民银行' if 'pbc.gov.cn' in url else 'OECD' if 'oecd.org' in url else '其他'
+
+
+def _mark(url, ok):
+    s = STATUS.setdefault(_source(url), {'ok': 0, 'fail': 0})
+    s['ok' if ok else 'fail'] += 1
 
 
 def fetch(url, cache=True, timeout=30):
@@ -42,11 +55,13 @@ def fetch(url, cache=True, timeout=30):
             text = raw.decode('utf-8', errors='ignore')
             if cache and len(text) > 3000:      # 过短多半是拦截页，不缓存
                 open(key, 'w', encoding='utf-8').write(text)
+            _mark(url, len(text) > 3000)
             time.sleep(0.3)
             return text
         except Exception as e:  # 网络抖动重试
             err = e
             time.sleep(2 * (attempt + 1))
+    _mark(url, False)
     print('  ! 抓取失败', url, err)
     return ''
 
@@ -439,13 +454,16 @@ def main():
     have = {o['sid'] for o in obs}
     catalog = [c for c in C if c['sid'] in have]
     data = dict(
-        updated=datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M'),
+        updated=datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M'),
+        sources=STATUS,
         catalog=catalog, observations=obs,
         reports=json.load(open(os.path.join(CONTENT, 'reports.json'), encoding='utf-8')),
         events=json.load(open(os.path.join(CONTENT, 'events.json'), encoding='utf-8')),
     )
     open(prev_path, 'w', encoding='utf-8').write('window.MACRO_DATA = ' + json.dumps(data, ensure_ascii=False) + ';\n')
     build_single()
+    for k, v in STATUS.items():
+        print('  来源 %-8s 成功 %d 次，失败 %d 次' % (k, v['ok'], v['fail']))
     print('完成：%d 个指标，%d 个数据点，数据更新于 %s' % (len(catalog), len(obs), data['updated']))
     for c in catalog:
         ds = [o['date'] for o in obs if o['sid'] == c['sid']]

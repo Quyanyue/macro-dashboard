@@ -330,7 +330,12 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
   if (!D) { document.querySelector('main').prepend(el('div', 'empty', '没有找到数据文件 data.js，请把 data.js 和本页面放在同一文件夹，或使用单文件版。')); return; }
-  $('#updated').textContent = D.updated;
+  $('#updated').textContent = D.updated + '（北京时间）';
+  if (D.sources) {
+    const bad = Object.entries(D.sources).filter(([, v]) => v.fail > 0 && v.ok === 0).map(([k]) => k);
+    const f = document.querySelector('footer');
+    f.appendChild(el('div', '', '本次抓取：' + Object.entries(D.sources).map(([k, v]) => k + ' ' + v.ok + ' 次成功' + (v.fail ? '、' + v.fail + ' 次失败' : '')).join('；') + (bad.length ? '。' + bad.join('、') + ' 本次未连上，相关指标沿用上次数据。' : '。')));
+  }
 
   // ---------- 主题 ----------
   const th = store.get('mx-theme', null); if (th) document.documentElement.dataset.theme = th;
